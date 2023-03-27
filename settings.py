@@ -23,3 +23,21 @@ REDEF_CHAT = (
     "might contain. Print only the body of the function."
 )
 
+CHAT_MODELS = ('gpt-3.5-turbo', 'gpt-4')
+
+compl_kwargs = (
+    'model',
+    'temperature',
+    'max_tokens',
+    'frequency_penalty',
+    'presence_penalty',
+    'top_p',
+    'logprobs',
+    'stop'
+)
+
+EP_KWARGS = {
+    'completions': compl_kwargs,
+    'chat-completions': compl_kwargs
+}
+

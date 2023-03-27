@@ -1,30 +1,39 @@
 import re
 from typing import Union
 
-import openai
 from cytoolz import keyfilter
+import openai
 
-CHAT_MODELS = ('gpt-3.5-turbo',)
-
-EP_KWARGS = {
-    'completions': ('model', 'temperature', 'max_tokens'),
-    'chat-completions': ('model', 'temperature', 'max_tokens')
-}
+from settings import EP_KWARGS, CHAT_MODELS
 
 
-def strip_codeblock(text):
+def _codestrippable(line):
+    if re.match(r"```(\w+)?", line):
+        return True
+    if re.match(r">>>", line):
+        return True
+
+
+def strip_codeblock(text, fname: str = None):
     """
-    crudely strip markdown codeblock formatting
+    crudely strip markdown codeblock formatting, import statements,
     and conventional Python terminal representation
     """
-    lines = tuple(filter(None, text.split("\n")))
-    if re.match("```(\w+)?", lines[0]):
-        lines = lines[1:]
-    if re.match(">>> .*", lines[0]):
-        lines = lines[1:]
-    if re.match("```", lines[-1]):
+    lines = list(filter(None, text.split("\n")))
+    if fname is not None:
+        f_ix = None
+        for i, line in enumerate(lines):
+            if line.strip().startswith(f"def {fname}"):
+                f_ix = i
+                break
+        if f_ix is not None:
+            lines = lines[f_ix:]
+    for _ in range(2):
+        if _codestrippable(lines[0]):
+            lines = lines[1:]
+    if _codestrippable(lines[-1]):
         lines = lines[:-1]
-    return ("\n".join(lines))
+    return "\n".join(lines)
 
 
 def addreply(msg, hist):

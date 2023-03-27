@@ -1,19 +1,19 @@
 import ast
 import re
-from inspect import getcallargs, getsource
+from inspect import getcallargs
 from types import FunctionType
-from typing import Any, Mapping, Optional, Sequence, Union
+from typing import Any, Mapping, Optional, Sequence, Union, Callable
 
 import openai
 
 from api_secrets import OPENAI_API_KEY, OPENAI_ORGANIZATION
-from dynamic import Dynamic
+from dynamic import digsource, Dynamic
 from openai_utils import (
-    strip_codeblock,
-    getchoice,
+    complete,
     CHAT_MODELS,
     chatinit,
-    complete,
+    getchoice,
+    strip_codeblock,
 )
 from settings import DEFAULT_SETTINGS, CHATGPT_NO, IEXEC_CHAT, REDEF_CHAT
 
@@ -22,17 +22,24 @@ openai.organization = OPENAI_ORGANIZATION
 
 
 def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
-    received = strip_codeblock(getchoice(response, choice_ix, raise_truncated))
+    if "__name__" in dir(defstem):
+        # functions and things like functions
+        fname = defstem.__name__
+        defstem = getdef(defstem)
+    else:
+        # just strings
+        fname = re.search(r"def (.+)\(", defstem).group(1)
+    received = strip_codeblock(
+        getchoice(response, choice_ix, raise_truncated), fname
+    )
     if received.startswith("def"):
         # TODO: add docstring and stuff back.
         #  probably just extract the body first.
         return received
-    if isinstance(defstem, FunctionType):
-        defstem = getdef(defstem)
     return f"{defstem}\n{received}"
 
 
-def getdef(func: FunctionType, get_docstring: bool = True) -> str:
+def getdef(func: Callable, get_docstring: bool = True) -> str:
     """
     return a string containing the 'definition portion' of func's
     source code (including annotations and inline comments).
@@ -45,7 +52,7 @@ def getdef(func: FunctionType, get_docstring: bool = True) -> str:
      of dynamically-defined functions.
     """
     defstring = re.search(
-        r"def.*\) ?(-> ?[^\n:]*)?:", getsource(func), re.M + re.DOTALL
+        r"def.*\) ?(-> ?[^\n:]*)?:", digsource(func), re.M + re.DOTALL
     ).group()
     if (func.__doc__ is None) or (get_docstring is False):
         return defstring
@@ -142,11 +149,11 @@ def request_function_call(
     callstring = format_calltext(_func, *args, **kwargs)
     if _settings["model"] in CHAT_MODELS:
         prefix = IEXEC_CHAT + CHATGPT_NO
-        prompt = f"{prefix}\n{getsource(_func)}\n{callstring}\n"
+        prompt = f"{prefix}\n{digsource(_func)}\n{callstring}\n"
         prompt = chatinit(prompt, _settings.get("system"))
     else:
         prefix = "# result of the function call\n>>> "
-        prompt = f"{getsource(_func)}\n{prefix}{callstring}\n"
+        prompt = f"{digsource(_func)}\n{prefix}{callstring}\n"
     return complete(prompt, _settings)
 
 

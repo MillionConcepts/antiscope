@@ -1,9 +1,24 @@
 import datetime as dt
 from functools import wraps
-from inspect import signature, Signature
+from inspect import getsource, signature, Signature
 import traceback
 from types import CodeType, FunctionType, MappingProxyType
-from typing import Mapping
+from typing import Mapping, Optional, Callable
+
+
+# TODO: some kind of "FunctionLike" type
+
+def digsource(obj: Callable):
+    """
+    wrapper for inspect.getsource that attempts to work on objects like
+    Dynamic, functools.partial, etc.
+    """
+    if isinstance(obj, FunctionType):
+        return getsource(obj)
+    if "func" in dir(obj):
+        # noinspection PyUnresolvedReferences
+        return getsource(obj.func)
+    raise TypeError(f"cannot get source for type {type(obj)}")
 
 
 def get_first_codechild(codeobj: CodeType) -> CodeType:
@@ -34,7 +49,7 @@ def dontcare(func, target=None):
 class Dynamic:
     def __init__(
         self,
-        source,
+        source: Optional[str] = None,
         globaldict: Mapping = MappingProxyType({}),
         optional: bool = True,
     ):
@@ -46,6 +61,8 @@ class Dynamic:
         self.source = source
         self.load()
 
+    # TODO: deal with modules not imported at compile-time
+    # -- maybe just permit second compilation
     def compile_source(self):
         if self.code is not None:
             raise ValueError("self.code already compiled")
@@ -56,6 +73,7 @@ class Dynamic:
             raise ValueError("self.func already defined")
         func = FunctionType(self.code, self.globaldict)
         self.__signature__ = signature(func)
+        self.__name__ = func.__name__
         if self.optional is True:
             func = dontcare(func, self.errors)
         self.func = func
@@ -92,6 +110,7 @@ class Dynamic:
 
     __signature__ = Signature()
     source, code, func = None, None, None
+    __name__ = '<unloaded Dynamic>'
 
 
 def test_dynamic():
