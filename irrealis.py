@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from types import MappingProxyType, FunctionType
-from typing import Optional, Mapping, Literal, Union
+from typing import Optional, Mapping, Literal, Union, Callable
 
-from dynamic import Dynamic, exc_report
+from dynamic import Dynamic, exc_report, digsource
 
 
 class ImplicationFailure(Exception):
@@ -19,7 +19,7 @@ class Irrealis(Dynamic, ABC):
     """
     def __init__(
         self,
-        description: Union[str, Mapping, None] = None,
+        description: Union[str, Mapping, FunctionType, None] = None,
         side: Literal["invocative", "evocative"] = "invocative",
         stance: Literal["explicit", "implicit"] = "explicit",
         optional: bool = False,
@@ -37,7 +37,20 @@ class Irrealis(Dynamic, ABC):
         self.imply_fail = False
         self.evoke_fail = False
         self.history = []
-        super().__init__(description, globals_, optional, lazy)
+        if self.stance == "implicit":
+            source = None
+        elif isinstance(description, Callable):
+            source = digsource(description)
+        elif isinstance(description, str):
+            source = description
+        elif isinstance(description, Mapping):
+            raise TypeError(
+                "Cannot initialize an Irrealis in explicit stance with a "
+                "Mapping description."
+            )
+        else:
+            raise TypeError("unknown description format.")
+        super().__init__(source, globals_, optional, lazy)
 
     def load(self, reload=False):
         if self.stance == "implicit":

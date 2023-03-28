@@ -90,8 +90,6 @@ class Dynamic:
         self.lazy = lazy
         self.call_fail = False
         self.compile_fail = False
-        if source is None:
-            return
         self.source = source
         if lazy is False:
             try:
