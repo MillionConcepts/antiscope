@@ -9,9 +9,9 @@ import openai
 from api_secrets import OPENAI_API_KEY, OPENAI_ORGANIZATION
 from dynamic import digsource, Dynamic
 from openai_utils import (
-    complete,
     CHAT_MODELS,
     chatinit,
+    complete,
     getchoice,
     strip_codeblock,
 )

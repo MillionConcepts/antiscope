@@ -46,12 +46,20 @@ def dontcare(func, target=None):
     return carelessly
 
 
+# TODO, maybe: optimization stuff re: kwarg mapping, etc. -- but if you wanted
+#  to engage in really high call volume, you could also just explicitly call
+#  the wrapped function...
 class Dynamic:
+    """
+    simple class to help manage function definition / execution from
+    dynamically-generated source.
+    """
     def __init__(
         self,
         source: Optional[str] = None,
         globaldict: Mapping = MappingProxyType({}),
-        optional: bool = True,
+        optional: bool = False,
+        lazy: bool = False
     ):
         self.globaldict = dict(globaldict)
         self.optional = optional
@@ -59,10 +67,12 @@ class Dynamic:
         if source is None:
             return
         self.source = source
-        self.load()
+        if lazy is False:
+            self.load()
 
     # TODO: deal with modules not imported at compile-time
-    # -- maybe just permit second compilation
+    #  -- maybe just permit second compilation --
+    #  -- or do we need to pass globals? ugh.
     def compile_source(self):
         if self.code is not None:
             raise ValueError("self.code already compiled")
@@ -82,23 +92,17 @@ class Dynamic:
         self.compile_source()
         self.define()
 
-    @classmethod
-    def from_source(
-        cls,
-        source: str,
-        globaldict: Mapping = MappingProxyType({}),
-        optional: bool = True,
-    ):
-        dyn = object.__new__(cls)
-        dyn.__init__(source, globaldict, optional)
-        dyn.compile_source()
-        dyn.define()
-
-    def __call__(self, *args, _strict=False, **kwargs):
-        if _strict is True:
+    def __call__(self, *args, _optional=None, **kwargs):
+        if _optional is None:
+            _optional = self.optional
+        if _optional is False:
             # noinspection PyUnresolvedReferences
             return self.func.__wrapped__(*args, **kwargs)
-        return self.func(*args, **kwargs)
+        try:
+            return self.func(*args, **kwargs)
+        finally:
+            if len(self.errors) > 0:
+                self.ok = False
 
     def __str__(self):
         if self.func is None:
@@ -109,13 +113,12 @@ class Dynamic:
         return self.__str__()
 
     __signature__ = Signature()
-    source, code, func = None, None, None
-    __name__ = '<unloaded Dynamic>'
+    source, code, func, __name__ = None, None, None, '<unloaded Dynamic>'
 
 
 def test_dynamic():
     testdef = """def f(x: float) -> float:\n    return x + 1"""
-    dyn = Dynamic(testdef)
+    dyn = Dynamic(testdef, optional=True)
     assert dyn(1) == 2
     dyn("j")
     assert (

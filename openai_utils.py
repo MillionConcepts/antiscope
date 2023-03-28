@@ -16,8 +16,8 @@ def _codestrippable(line):
 
 def strip_codeblock(text, fname: str = None):
     """
-    crudely strip markdown codeblock formatting, import statements,
-    and conventional Python terminal representation
+    crudely strip markdown codeblock formatting, conventional Python terminal
+    representation, and any precursor to an (undesired) function redeclaration
     """
     lines = list(filter(None, text.split("\n")))
     if fname is not None:
