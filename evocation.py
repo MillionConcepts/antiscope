@@ -28,7 +28,10 @@ def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
         defstem = getdef(defstem)
     else:
         # just strings
-        fname = re.search(r"def (.+)\(", defstem).group(1)
+        if (match :=  re.search(r"def (.+)\(", defstem)) is not None:
+            fname = match.group(1)
+        else:
+            fname = None
     received = strip_codeblock(
         getchoice(response, choice_ix, raise_truncated), fname
     )

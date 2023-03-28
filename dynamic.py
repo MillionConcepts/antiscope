@@ -84,8 +84,6 @@ class Dynamic:
         func = FunctionType(self.code, self.globaldict)
         self.__signature__ = signature(func)
         self.__name__ = func.__name__
-        if self.optional is True:
-            func = dontcare(func, self.errors)
         self.func = func
 
     def load(self):
@@ -97,9 +95,9 @@ class Dynamic:
             _optional = self.optional
         if _optional is False:
             # noinspection PyUnresolvedReferences
-            return self.func.__wrapped__(*args, **kwargs)
-        try:
             return self.func(*args, **kwargs)
+        try:
+            return dontcare(self.func, self.errors)(*args, **kwargs)
         finally:
             if len(self.errors) > 0:
                 self.ok = False
