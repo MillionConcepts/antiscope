@@ -3,16 +3,18 @@ reference implementation of irrealis-mood functionality w/the OpenAI API
 """
 import ast
 import datetime as dt
-import re
 from inspect import getcallargs
+import re
 from types import FunctionType
 from typing import Any, Mapping, Optional, Sequence, Union, Callable
 
 import openai
+from cytoolz import curry
 
 from api_secrets import OPENAI_API_KEY, OPENAI_ORGANIZATION
 from dynamic import digsource, Dynamic, exc_report
-from irrealis import Irrealis, ImplicationFailure, EvocationFailure
+from irrealis import Irrealis, ImplicationFailure, EvocationFailure, \
+    base_evoked, base_implied
 from openai_settings import (
     CHAT_MODELS, DEFAULT_SETTINGS, CHATGPT_NO, IEXEC_CHAT, REDEF_CHAT
 )
@@ -46,6 +48,15 @@ def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
         #  probably just extract the body first.
         return received
     return f"{defstem}\n{received}"
+
+
+OUR_DECORATORS = ("@evoked", "@implied")
+
+
+def _strip_our_decorators(defstring: str) -> str:
+    for decorator in OUR_DECORATORS:
+        defstring = re.sub(f"{decorator}.*\n", "", defstring)
+    return defstring
 
 
 def getdef(func: Callable, get_docstring: bool = True) -> str:
@@ -156,13 +167,14 @@ def request_function_call(
     **kwargs,
 ):
     callstring = format_calltext(_func, *args, **kwargs)
+    source = _strip_our_decorators(digsource(_func))
     if _settings["model"] in CHAT_MODELS:
         prefix = IEXEC_CHAT + CHATGPT_NO + "\n###\n"
-        prompt = f"{prefix}\n{digsource(_func)}\n{callstring}\n"
+        prompt = f"{prefix}\n{source}\n{callstring}\n"
         prompt = chatinit(prompt, _settings.get("system"))
     else:
         prefix = "# result of the function call\n>>> "
-        prompt = f"{digsource(_func)}\n{prefix}{callstring}\n"
+        prompt = f"{source}\n{prefix}{callstring}\n"
     return complete(prompt, _settings)
 
 
@@ -268,3 +280,6 @@ class OAIrrealis(Irrealis):
 
     default_api_settings = DEFAULT_SETTINGS
 
+
+evoked = curry(base_evoked)(irrealis=OAIrrealis)
+implied = curry(base_implied)(irrealis=OAIrrealis)

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from types import MappingProxyType
+from types import MappingProxyType, FunctionType
 from typing import Optional, Mapping, Literal, Union
 
 from dynamic import Dynamic, exc_report
@@ -85,6 +85,19 @@ class Irrealis(Dynamic, ABC):
 
     default_api_settings: MappingProxyType
     __name__ = '<unloaded Irrealis>'
+
+
+def base_evoked(func: FunctionType, irrealis: type[Irrealis], *args, **kwargs):
+    return irrealis.from_function(func, *args, side='evocative', **kwargs)
+
+
+def base_implied(
+    base: Union[FunctionType, str, dict],
+    irrealis: type[Irrealis],
+    *args,
+    **kwargs
+):
+    return irrealis(base, *args, stance='implicit', **kwargs)
 
 
 """quasigraphs"""
