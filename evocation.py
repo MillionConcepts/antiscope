@@ -186,7 +186,7 @@ def evoke(
     result = response
     for step in _processing_pipeline:
         try:
-            result = step(response)
+            result = step(result)
         except KeyboardInterrupt:
             raise
         except Exception as exc:
@@ -242,15 +242,19 @@ class OAIrrealis(Irrealis):
             )
             raise ImplicationFailure(exc)
 
-    def evoke(self, *args, **kwargs):
-        result, res, prompt, report, exc = evoke(self.func, *args, **kwargs)
+    def evoke(self, *args, _optional=None, **kwargs):
+        _optional = self.optional if _optional is None else _optional
+        result, res, prompt, report, exc = evoke(
+            self.func, *args, _extended=True, **kwargs
+        )
         self.log(prompt, res, 'evoke')
         if exc is not None:
             self.evoke_fail = True
             self.errors.append(report)
-            if self.optional is True:
+            if _optional is True:
                 return result
             raise EvocationFailure(exc)
+        return result
 
     def log(self, prompt, response, category):
         self.history.append(

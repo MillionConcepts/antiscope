@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from types import MappingProxyType
-from typing import Optional, Mapping, Literal, MutableMapping, Union
+from typing import Optional, Mapping, Literal, Union
 
 from dynamic import Dynamic, exc_report
 
@@ -58,7 +58,7 @@ class Irrealis(Dynamic, ABC):
         return super().load()
 
     @abstractmethod
-    def evoke(self, *args, **kwargs):
+    def evoke(self, *args, _optional=None, **kwargs):
         raise NotImplementedError
 
     @abstractmethod
@@ -80,8 +80,8 @@ class Irrealis(Dynamic, ABC):
         reload = (self.stance == "implicit") and self.auto_reimply
         super()._maybe_load_on_call(reload=reload)
         if self.side == "invocative":
-            return self.invoke(*args, _optional, **kwargs)
-        return self.evoke(*args, _optional, **kwargs)
+            return self.invoke(*args, _optional=_optional, **kwargs)
+        return self.evoke(*args, _optional=_optional, **kwargs)
 
     default_api_settings: MappingProxyType
     __name__ = '<unloaded Irrealis>'
