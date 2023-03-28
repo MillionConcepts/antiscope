@@ -111,7 +111,7 @@ def format_calltext(func, *args, **kwargs):
     callargs = getcallargs(func, *args, **kwargs)
     for k, v in callargs.items():
         if isinstance(v, str):
-            pretty_args[k] = f"'{v}'"
+            pretty_args[k] = f"\"\"\"{v}\"\"\""
         elif v.__repr__().startswith("<"):
             if "__name__" in dir(v):
                 pretty_args[k] = v.__name__
@@ -151,7 +151,7 @@ def request_function_call(
 ):
     callstring = format_calltext(_func, *args, **kwargs)
     if _settings["model"] in CHAT_MODELS:
-        prefix = IEXEC_CHAT + CHATGPT_NO
+        prefix = IEXEC_CHAT + CHATGPT_NO + "\n###\n"
         prompt = f"{prefix}\n{digsource(_func)}\n{callstring}\n"
         prompt = chatinit(prompt, _settings.get("system"))
     else:
