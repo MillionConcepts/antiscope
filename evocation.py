@@ -50,11 +50,11 @@ def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
     return f"{defstem}\n{received}"
 
 
-OUR_DECORATORS = ("@evoked", "@implied")
+EXPECTED_DECORATORS = ("@evoked", "@implied", "@cache")
 
 
 def _strip_our_decorators(defstring: str) -> str:
-    for decorator in OUR_DECORATORS:
+    for decorator in EXPECTED_DECORATORS:
         defstring = re.sub(f"{decorator}.*\n", "", defstring)
     return defstring
 
