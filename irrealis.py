@@ -1,10 +1,11 @@
+from abc import ABC
 from types import MappingProxyType
-from typing import Optional, Mapping, Literal
+from typing import Optional, Mapping, Literal, MutableMapping
 
 from dynamic import Dynamic
 
 
-class Irrealis(Dynamic):
+class Irrealis(Dynamic, ABC):
     """
     simple class to help manage function evocation and implication
     """
@@ -16,16 +17,43 @@ class Irrealis(Dynamic):
         side: Literal["invocative", "evocative"] = "invocative",
         stance: Literal["explicit", "implicit"] = "explicit",
         # performativity: Literal["imperative", "desiderative"] = "imperative"
-        lazy: bool = True
+        lazy: bool = True,
+        api_settings: Optional[MutableMapping] = None,
+        auto_reimply: bool = True
     ):
         self.description = description
         self.globaldict = globaldict
         self.side = side
         self.stance = stance
-        if lazy is True:
-            super().__init__(optional=optional)
-            return
-        super.__init__(description, )
+        self.api_settings = {} if api_settings is None else dict(api_settings)
+        self.auto_reimply = auto_reimply
+        super().__init__(description, globaldict, optional, lazy)
+
+    def load(self, reload=False):
+        if self.stance == "implicit":
+            if (self.source is None) or (reload is True):
+                self.source = self.imply()
+        return super().load()
+
+    def evoke(self, *args, _optional=None, **kwargs):
+        raise NotImplementedError
+
+    def imply(self) -> str:
+        raise NotImplementedError
+
+    def invoke(self, *args, _optional=None, **kwargs):
+        _optional = self.optional if _optional is None else _optional
+        return super().__call__(*args, _optional=_optional, **kwargs)
+
+    def __call__(self, *args, _optional=None, **kwargs):
+        if self.side == "invocative":
+            reload = (self.stance == "implicit") and self.auto_reimply
+            super()._maybe_load_on_call(reload=reload)
+            return self.invoke(*args, _optional, **kwargs)
+        return self.evoke(*args, _optional, **kwargs)
+
+    __name__ = '<unloaded Irrealis>'
+
 
 
 

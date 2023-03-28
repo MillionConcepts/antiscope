@@ -3,10 +3,16 @@ from functools import wraps
 from inspect import getsource, signature, Signature
 import traceback
 from types import CodeType, FunctionType, MappingProxyType
-from typing import Mapping, Optional, Callable
+from typing import Mapping, Optional, Callable, Union, Sequence
 
+from cytoolz import nth
 
 # TODO: some kind of "FunctionLike" type
+
+
+class UnreadyDynamicError(ValueError):
+    pass
+
 
 def digsource(obj: Callable):
     """
@@ -21,8 +27,8 @@ def digsource(obj: Callable):
     raise TypeError(f"cannot get source for type {type(obj)}")
 
 
-def get_first_codechild(codeobj: CodeType) -> CodeType:
-    return next(filter(lambda c: isinstance(c, CodeType), codeobj.co_consts))
+def get_codechild(code: CodeType, ix: int = 0) -> CodeType:
+    return nth(ix, filter(lambda c: isinstance(c, CodeType), code.co_consts))
 
 
 def exc_report(exc):
@@ -46,6 +52,16 @@ def dontcare(func, target=None):
     return carelessly
 
 
+def compile_source(source: str):
+    return get_codechild(compile(source, "", "exec"))
+
+
+def define(
+    code: CodeType, globaldict: Mapping = MappingProxyType({})
+) -> FunctionType:
+    return FunctionType(code, dict(globaldict))
+
+
 # TODO, maybe: optimization stuff re: kwarg mapping, etc. -- but if you wanted
 #  to engage in really high call volume, you could also just explicitly call
 #  the wrapped function...
@@ -59,11 +75,15 @@ class Dynamic:
         source: Optional[str] = None,
         globaldict: Mapping = MappingProxyType({}),
         optional: bool = False,
-        lazy: bool = False
+        lazy: bool = False,
+        load_on_call: bool = True
     ):
         self.globaldict = dict(globaldict)
         self.optional = optional
         self.errors = []
+        self.load_on_call = load_on_call
+        self.lazy = lazy
+        self.ok = True
         if source is None:
             return
         self.source = source
@@ -73,24 +93,40 @@ class Dynamic:
     # TODO: deal with modules not imported at compile-time
     #  -- maybe just permit second compilation --
     #  -- or do we need to pass globals? ugh.
-    def compile_source(self):
-        if self.code is not None:
+
+    def load(self, reload=False):
+        if (reload is False) and (self.func is not None):
+            raise ValueError("self.func already loaded")
+        self.compile_source()
+        self.define()
+
+    def compile_source(self, recompile=True):
+        if (recompile is False) and (self.code is not None):
             raise ValueError("self.code already compiled")
-        self.code = get_first_codechild(compile(self.source, "", "exec"))
+        self.code = compile_source(self.source)
 
     def define(self):
         if self.func is not None:
             raise ValueError("self.func already defined")
-        func = FunctionType(self.code, self.globaldict)
-        self.__signature__ = signature(func)
-        self.__name__ = func.__name__
-        self.func = func
+        self.func = define(self.code, self.globaldict)
+        self.__signature__ = signature(self.func)
+        self.__name__ = self.func.__name__
 
-    def load(self):
-        self.compile_source()
-        self.define()
+    def unload(self):
+        del self.code, self.func, self.errors
+        self.code, self.func, self.errors, self.ok = None, None, [], True
+        self.__name__ = self.__class__.__name__
+        self.__signature__ = None
+
+    def _maybe_load_on_call(self, reload=False):
+        if self.func is not None:
+            return
+        if self.load_on_call is True:
+            return self.load(reload)
+        raise UnreadyDynamicError("No loaded function.")
 
     def __call__(self, *args, _optional=None, **kwargs):
+        self._maybe_load_on_call()
         if _optional is None:
             _optional = self.optional
         if _optional is False:
@@ -104,7 +140,7 @@ class Dynamic:
 
     def __str__(self):
         if self.func is None:
-            return "unloaded Dynamic"
+            return self.__class__.__name__
         return f"Dynamic: {signature(self.func)}"
 
     def __repr__(self):
