@@ -4,7 +4,7 @@ from typing import Union
 from cytoolz import keyfilter
 import openai
 
-from settings import EP_KWARGS, CHAT_MODELS
+from openai_settings import EP_KWARGS, CHAT_MODELS
 
 
 def _codestrippable(line):
