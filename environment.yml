@@ -1,0 +1,8 @@
+name: antiscope
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - openai
+  - cytoolz
+  - ipython
