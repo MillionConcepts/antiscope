@@ -1,4 +1,8 @@
+﻿"""
+reference implementation of irrealis-mood functionality w/the OpenAI API
+"""
 import ast
+import datetime as dt
 import re
 from inspect import getcallargs
 from types import FunctionType
@@ -7,15 +11,17 @@ from typing import Any, Mapping, Optional, Sequence, Union, Callable
 import openai
 
 from api_secrets import OPENAI_API_KEY, OPENAI_ORGANIZATION
-from dynamic import digsource, Dynamic
+from dynamic import digsource, Dynamic, exc_report
+from irrealis import Irrealis, ImplicationFailure, EvocationFailure
+from openai_settings import (
+    CHAT_MODELS, DEFAULT_SETTINGS, CHATGPT_NO, IEXEC_CHAT, REDEF_CHAT
+)
 from openai_utils import (
-    CHAT_MODELS,
     chatinit,
     complete,
     getchoice,
     strip_codeblock,
 )
-from settings import DEFAULT_SETTINGS, CHATGPT_NO, IEXEC_CHAT, REDEF_CHAT
 
 openai.api_key = OPENAI_API_KEY
 openai.organization = OPENAI_ORGANIZATION
@@ -28,7 +34,7 @@ def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
         defstem = getdef(defstem)
     else:
         # just strings
-        if (match :=  re.search(r"def (.+)\(", defstem)) is not None:
+        if (match := re.search(r"def (.+)\(", defstem)) is not None:
             fname = match.group(1)
         else:
             fname = None
@@ -160,26 +166,36 @@ def request_function_call(
     return complete(prompt, _settings)
 
 
+EVOCATION_PIPELINE = (getchoice, strip_codeblock, ast.literal_eval)
+
+
+# TODO: this might actually be usable as a more generic `evoke` pattern.
 def evoke(
-    _func: FunctionType, *args, _settings: Mapping = DEFAULT_SETTINGS, **kwargs
+    _func: FunctionType,
+    *args,
+    _settings: Mapping = DEFAULT_SETTINGS,
+    _extended: bool = False,
+    _processing_pipeline: tuple[Callable] = EVOCATION_PIPELINE,
+    **kwargs
 ):
     """evoke a function, producing a possible result of its execution"""
-    result, prompt = request_function_call(
+    response, prompt = request_function_call(
         _func, *args, _settings=_settings, **kwargs
     )
-    for step in (getchoice, strip_codeblock, ast.literal_eval):
-        # TODO: dissociate this or hook it into something
-        #  -- maybe basically a maybe monad --
-        #  -- or it can be given some kind of cache/target argument
-        #  that corresponds to an attribute of a Dynamic-like class
-        #  (sort of like we do for killscreen Viewers)
+    exception, excstep, report = None, None, None
+    result = response
+    for step in _processing_pipeline:
         try:
-            result = step(result)
+            result = step(response)
         except KeyboardInterrupt:
             raise
-        except Exception as ex:
-            return result
-    return result
+        except Exception as exc:
+            exception, excstep = exc, step.__name__
+    if _extended is False:
+        return result
+    if exception is not None:
+        report = exc_report(exception) | {'step': excstep}
+    return result, response, prompt, report, exception
 
 
 def imply(
@@ -194,3 +210,57 @@ def imply(
         base, args_like=args_like, return_like=return_like, _settings=_settings
     )
     return Dynamic(reconstruct_def(result, base))
+
+
+class OAIrrealis(Irrealis):
+
+    def imply(self, _sideload_settings: Optional[Mapping] = None) -> str:
+        step = 'setup'
+        _settings = self.api_settings
+        if _sideload_settings is not None:
+            _settings = _settings | _sideload_settings
+        try:
+            step = 'api_call'
+            if isinstance(self.description, Mapping):
+                base = self.description['base']
+                res, prompt = request_function_definition(
+                    _settings=_settings, **self.description
+                )
+            else:
+                base = self.description
+                res, prompt = request_function_definition(
+                    self.description, _settings=_settings
+                )
+            self.log(prompt, res, 'imply')
+            step = 'interpret_response'
+            return reconstruct_def(res, base)
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            self.errors.append(
+                exc_report(exc) | {'category': 'imply', 'step': step}
+            )
+            raise ImplicationFailure(exc)
+
+    def evoke(self, *args, **kwargs):
+        result, res, prompt, report, exc = evoke(self.func, *args, **kwargs)
+        self.log(prompt, res, 'evoke')
+        if exc is not None:
+            self.evoke_fail = True
+            self.errors.append(report)
+            if self.optional is True:
+                return result
+            raise EvocationFailure(exc)
+
+    def log(self, prompt, response, category):
+        self.history.append(
+            {
+                'prompt': prompt,
+                'response': response,
+                'category': category,
+                'time': dt.datetime.now().isoformat()[:-3]
+            }
+        )
+
+    default_api_settings = DEFAULT_SETTINGS
+

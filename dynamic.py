@@ -1,13 +1,17 @@
 import datetime as dt
+import traceback
 from functools import wraps
 from inspect import getsource, signature, Signature
-import traceback
-from types import CodeType, FunctionType, MappingProxyType
-from typing import Mapping, Optional, Callable, Union, Sequence
+from types import CodeType, FunctionType
+from typing import Optional, Callable
 
 from cytoolz import nth
 
+
 # TODO: some kind of "FunctionLike" type
+
+class AlreadyLoadedError(ValueError):
+    pass
 
 
 class UnreadyDynamicError(ValueError):
@@ -32,6 +36,8 @@ def get_codechild(code: CodeType, ix: int = 0) -> CodeType:
 
 
 def exc_report(exc):
+    if exc is None:
+        return {}
     return {
         "time": dt.datetime.now().isoformat()[:-3],
         "exception": exc,
@@ -47,7 +53,7 @@ def dontcare(func, target=None):
         except KeyboardInterrupt:
             raise
         except Exception as e:
-            target.append(exc_report(e) | {"func": func})
+            target.append(exc_report(e) | {"func": func, 'category': 'call'})
 
     return carelessly
 
@@ -56,10 +62,9 @@ def compile_source(source: str):
     return get_codechild(compile(source, "", "exec"))
 
 
-def define(
-    code: CodeType, globaldict: Mapping = MappingProxyType({})
-) -> FunctionType:
-    return FunctionType(code, dict(globaldict))
+def define(code: CodeType, globals_: Optional[dict] = None) -> FunctionType:
+    globals_ = globals_ if globals_ is not None else globals()
+    return FunctionType(code, globals_)
 
 
 # TODO, maybe: optimization stuff re: kwarg mapping, etc. -- but if you wanted
@@ -73,22 +78,27 @@ class Dynamic:
     def __init__(
         self,
         source: Optional[str] = None,
-        globaldict: Mapping = MappingProxyType({}),
+        globals_: Optional[dict] = None,
         optional: bool = False,
         lazy: bool = False,
         load_on_call: bool = True
     ):
-        self.globaldict = dict(globaldict)
+        self.globals_ = globals_
         self.optional = optional
         self.errors = []
         self.load_on_call = load_on_call
         self.lazy = lazy
-        self.ok = True
+        self.call_fail = False
+        self.compile_fail = False
         if source is None:
             return
         self.source = source
         if lazy is False:
-            self.load()
+            try:
+                self.load()
+            # should only encounter this when called from a class constructor
+            except AlreadyLoadedError:
+                pass
 
     # TODO: deal with modules not imported at compile-time
     #  -- maybe just permit second compilation --
@@ -96,25 +106,32 @@ class Dynamic:
 
     def load(self, reload=False):
         if (reload is False) and (self.func is not None):
-            raise ValueError("self.func already loaded")
+            raise AlreadyLoadedError("self.func already loaded")
         self.compile_source()
         self.define()
 
     def compile_source(self, recompile=True):
         if (recompile is False) and (self.code is not None):
-            raise ValueError("self.code already compiled")
-        self.code = compile_source(self.source)
+            raise AlreadyLoadedError("self.code already compiled")
+        try:
+            self.code = compile_source(self.source)
+        except KeyboardInterrupt:
+            raise
+        except Exception as ex:
+            self.errors.append(exc_report(ex) | {'category': 'compile'})
+            self.compile_fail = True
 
     def define(self):
         if self.func is not None:
-            raise ValueError("self.func already defined")
-        self.func = define(self.code, self.globaldict)
+            raise AlreadyLoadedError("self.func already defined")
+        self.func = define(self.code, self.globals_)
         self.__signature__ = signature(self.func)
         self.__name__ = self.func.__name__
 
     def unload(self):
         del self.code, self.func, self.errors
-        self.code, self.func, self.errors, self.ok = None, None, [], True
+        self.call_fail, self.compile_fail = False, False
+        self.code, self.func, self.errors = None, None, []
         self.__name__ = self.__class__.__name__
         self.__signature__ = None
 
@@ -136,15 +153,29 @@ class Dynamic:
             return dontcare(self.func, self.errors)(*args, **kwargs)
         finally:
             if len(self.errors) > 0:
-                self.ok = False
+                if self.errors[-1].get('category') == 'call':
+                    self.call_fail = True
 
     def __str__(self):
         if self.func is None:
             return self.__class__.__name__
-        return f"Dynamic: {signature(self.func)}"
+        return f"{self.__class__.__name__} {signature(self.func)}"
 
     def __repr__(self):
         return self.__str__()
+
+    @classmethod
+    def from_function(cls, func: FunctionType, *init_args, **init_kwargs):
+        # TODO: some of this boilerplate could be reduced with a bunch of
+        #  fancy getattr overrides
+        dynamic = super().__new__(cls)
+        dynamic.source = digsource(func)
+        dynamic.code = func.__code__
+        dynamic.func = func
+        dynamic.__signature__ = signature(dynamic.func)
+        dynamic.__name__ = dynamic.func.__name__
+        dynamic.__init__(*init_args, **init_kwargs)
+        return dynamic
 
     __signature__ = Signature()
     source, code, func, __name__ = None, None, None, '<unloaded Dynamic>'
