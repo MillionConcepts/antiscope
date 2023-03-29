@@ -102,7 +102,8 @@ def conversation_factory(_settings=DEFAULT_SETTINGS, with_console=True):
 
         printer = Console(width=66).print
     else:
-        printer = print
+        def printer(msg, *args, style=None, **kwargs):
+            return print(msg, *args, **kwargs)
 
     def say(
         message=None, printreply=True, extract=True, eject=False, **api_kwargs
@@ -114,10 +115,17 @@ def conversation_factory(_settings=DEFAULT_SETTINGS, with_console=True):
             raise TypeError("unless ejecting history, must add a message")
         history = addmsg(message, history)
         response, _ = complete(history, _settings | api_kwargs)
-        text = getchoice(response)
+        try:
+            text = getchoice(response)
+            term_msg = ""
+        except IOError as ioe:
+            text = getchoice(response, raise_truncated=False)
+            term_msg = f"[dark_orange bold]\n\n{str(ioe)}"
         history = addreply(text, history)
         if printreply is True:
             printer(text)
+            if term_msg != "":
+                printer(text + term_msg)
         if extract is True:
             return text
         return response

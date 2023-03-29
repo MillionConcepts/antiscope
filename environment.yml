@@ -6,3 +6,4 @@ dependencies:
   - openai
   - cytoolz
   - ipython
+  - rich
