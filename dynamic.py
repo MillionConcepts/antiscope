@@ -14,7 +14,7 @@ class AlreadyLoadedError(ValueError):
     pass
 
 
-class UnreadyDynamicError(ValueError):
+class UnreadyError(ValueError):
     pass
 
 
@@ -138,7 +138,7 @@ class Dynamic:
             return
         if self.load_on_call is True:
             return self.load(reload)
-        raise UnreadyDynamicError("No loaded function.")
+        raise UnreadyError("No loaded function.")
 
     def __call__(self, *args, _optional=None, **kwargs):
         self._maybe_load_on_call()

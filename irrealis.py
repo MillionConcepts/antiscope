@@ -1,8 +1,19 @@
 from abc import ABC, abstractmethod
 from types import MappingProxyType, FunctionType
-from typing import Optional, Mapping, Literal, Union, Callable
+# noinspection PyUnresolvedReferences, PyProtectedMember
+from typing import (
+    Optional, Mapping, Literal, Union, Callable, Any, _GenericAlias
+)
 
-from dynamic import Dynamic, exc_report, digsource
+from cytoolz import identity
+
+from dynamic import Dynamic, exc_report, digsource, UnreadyError
+
+# TODO: async versions. maybe only needs to happen at implementation level,
+#  but there might be helper structures here. implementations still need to
+#  be responsible for not blocking when running async (but not parallel).
+#  if we do want true parallelism we will probably want to implement pickling
+#  functionality for these classes.
 
 
 class ImplicationFailure(Exception):
@@ -11,7 +22,6 @@ class ImplicationFailure(Exception):
 
 class EvocationFailure(Exception):
     pass
-
 
 class Irrealis(Dynamic, ABC):
     """
@@ -113,6 +123,134 @@ def base_implied(
     **kwargs
 ):
     return irrealis(base, *args, stance='implicit', **kwargs)
+
+
+class ImplicationInterior(ABC):
+    def __init__(
+        self,
+        description: Union[str, Mapping, None],
+        implied_type: Union[None, type, _GenericAlias] = None,
+        optional: bool = False,
+        lazy: bool = True,
+        auto_reimply: bool = False,
+        formatter: Callable = identity,
+        load_on_access: bool = True,
+        **api_kwargs
+    ):
+        self.description = description
+        self.implied_type = implied_type
+        self.api_settings = self.default_api_settings | api_kwargs
+        self.auto_reimply = auto_reimply
+        self.imply_fail = False
+        self.optional = optional
+        self.formatter = formatter
+        self.lazy = lazy
+        self.obj = None
+        self.load_on_access = load_on_access
+
+    @abstractmethod
+    def load(self, reload=False) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def imply(self) -> str:
+        raise NotImplementedError
+
+    def setobjattr(self, attr, value):
+        if self.obj is None:
+            raise UnreadyError
+        self.obj.__setattr__(attr, value)
+
+    def getobjattr(self, attr):
+        if self.obj is None:
+            raise UnreadyError
+        self.obj.__getattr__(attr)
+
+    default_api_settings: MappingProxyType
+
+
+# TODO, maybe: implement auto-reimply for this. might need to limit it to
+#  particular attributes. Could basically just freeze all execution.
+class Implication:
+
+    def __init__(self, *args, **kw):
+        if "__constructor" in kw.keys():
+            self.__constructor = kw.pop('__constructor')
+        elif "__constructor" not in dir(self):
+            raise TypeError(
+                "Must pass a __constructor kwarg to __init__ "
+                "if no __constructor attribute already exists."
+            )
+        self.__interior = self.__constructor(*args, **kw)
+        self.__optional = self.__interior.optional
+        if self.__interior.lazy is False:
+            self.load()
+            return
+        if self.__interior.load_on_access is False:
+            return
+        self.__initialized = True
+
+    def load(self, *args, **kwargs):
+        load_success = self.__interior.load(*args, **kwargs)
+        self.__initialized = load_success
+        self.__loaded = load_success
+
+    def __getattribute__(self, attr):
+        if attr == "__private_attributes":
+            return object.__getattribute__(self, "__private_attributes")
+        if attr in self.__private_attributes:
+            return object.__getattribute__(self, attr)
+        if attr == "__setattribute__":
+            return self.__getattr("__setattribute__")
+        if self.__initialized is False:
+            try:
+                return self.__getattr(attr)
+            except AttributeError:
+                return self.__interior.__getattribute__(attr)
+        if self.__loaded is False:
+            if self.__interior.load_on_access is True:
+                self.load()
+            else:
+                return self.__getattr(attr)
+        return self.__interior.getobjattr(attr)
+
+    # TODO: the difference in functionality re: fallback to __interior's
+    #  attributes during initialization and loading, and __getattribute__ and
+    #  __setattribute__, is concerning. need to work with some implementations
+    #  to see what behaviors make most sense.
+    def __setattr__(self, attr, value):
+        if self.__initialized is False:
+            return self.__setattr(attr, value)
+        if attr in self.__private_attributes:
+            return self.__setattr(attr, value)
+        if self.__loaded is False:
+            if self.__interior.load_on_access is True:
+                self.load()
+            else:
+                return self.__setattr(attr, value)
+        return self.__interior.setobjattr(attr, value)
+
+    def __getattr(self, attr):
+        return object.__getattribute__(self, attr)
+
+    def __setattr(self, attr, value):
+        return object.__setattr__(self, attr, value)
+
+    __initialized = False
+    __loaded = False
+    __constructor: Union[
+        ImplicationInterior, Callable[[Any], ImplicationInterior]
+    ]
+    __private_attributes = (
+        "__interior",
+        "__initialized",
+        "__loaded",
+        "__optional",
+        "__interior_constructor",
+        "__getattr",
+        "__setattr",
+        "__private_attributes",
+    )
 
 
 """quasigraphs"""
