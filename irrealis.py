@@ -121,7 +121,7 @@ def base_implied(
 The Problem of Functional Heterogeneity:
 Crosslinguistically, imperatives get associated with a rather heterogeneous 
 range of speech act types (Commands, Warnings, Requests, Advice, Curses, 
-Permissions, Permissions, Concessions...)
+Permissions, Concessions...)
 (Condoravdi and Lauer 2009, ref. Schmerling 1982)
 """
 
