@@ -4,7 +4,7 @@ from typing import Union
 from cytoolz import keyfilter
 import openai
 
-from openai_settings import EP_KWARGS, CHAT_MODELS
+from openai_settings import EP_KWARGS, CHAT_MODELS, DEFAULT_SETTINGS
 
 
 def _codestrippable(line):
@@ -91,7 +91,7 @@ def getchoice(openai_response, choice_ix=0, raise_truncated: bool = True):
     return choice["text"]
 
 
-def conversation_factory(_settings, with_console=True):
+def conversation_factory(_settings=DEFAULT_SETTINGS, with_console=True):
     if _settings["model"] not in CHAT_MODELS:
         raise TypeError(
             f'{_settings["model"]} does not support chat completions.'
