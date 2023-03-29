@@ -97,18 +97,24 @@ class Conversation:
     implements simple UI for interactive chat completion.
     primarily intended for dev/testing.
     """
-    def __init__(self, settings=DEFAULT_SETTINGS):
+    def __init__(self, settings=DEFAULT_SETTINGS, **api_kwargs):
         if settings["model"] not in CHAT_MODELS:
             raise TypeError(
                 f'{settings["model"]} does not support chat completions.'
             )
-        self.settings = settings
+        self.settings = settings | api_kwargs
         self.messages = chatinit(system=settings["system"])
         self.history = []
         self.printreplies = True
         from rich.console import Console
 
         self.console = Console(width=66)
+
+    def addmsg(self, msg):
+        self.messages = addmsg(msg, self.messages)
+
+    def addreply(self, msg):
+        self.messages = addreply(msg, self.messages)
 
     def printon(self):
         self.printreplies = True

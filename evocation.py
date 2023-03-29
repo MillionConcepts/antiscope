@@ -166,16 +166,24 @@ def request_function_call(
     _settings=DEFAULT_SETTINGS,
     **kwargs,
 ):
+    for_chat = _settings['model'] in CHAT_MODELS
+    prompt = construct_call_prompt(
+        _func, args, kwargs, for_chat, _settings.get("system")
+    )
+    return complete(prompt, _settings)
+
+
+def construct_call_prompt(_func, args, kwargs, for_chat=True, system=None):
     callstring = format_calltext(_func, *args, **kwargs)
     source = _strip_our_decorators(digsource(_func))
-    if _settings["model"] in CHAT_MODELS:
+    if for_chat is True:
         prefix = IEXEC_CHAT + CHATGPT_NO + "\n###\n"
         prompt = f"{prefix}\n{source}\n{callstring}\n"
-        prompt = chatinit(prompt, _settings.get("system"))
+        prompt = chatinit(prompt, system)
     else:
         prefix = "# result of the function call\n>>> "
         prompt = f"{source}\n{prefix}{callstring}\n"
-    return complete(prompt, _settings)
+    return prompt
 
 
 EVOCATION_PIPELINE = (getchoice, strip_codeblock, ast.literal_eval)
