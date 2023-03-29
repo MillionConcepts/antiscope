@@ -1,3 +1,4 @@
+import datetime as dt
 import re
 from typing import Union
 
@@ -91,43 +92,71 @@ def getchoice(openai_response, choice_ix=0, raise_truncated: bool = True):
     return choice["text"]
 
 
-def conversation_factory(_settings=DEFAULT_SETTINGS, with_console=True):
-    if _settings["model"] not in CHAT_MODELS:
-        raise TypeError(
-            f'{_settings["model"]} does not support chat completions.'
-        )
-    history = chatinit(system=_settings["system"])
-    if with_console is True:
+class Conversation:
+    """
+    implements simple UI for interactive chat completion.
+    primarily intended for dev/testing.
+    """
+    def __init__(self, settings=DEFAULT_SETTINGS):
+        if settings["model"] not in CHAT_MODELS:
+            raise TypeError(
+                f'{settings["model"]} does not support chat completions.'
+            )
+        self.settings = settings
+        self.messages = chatinit(system=settings["system"])
+        self.history = []
+        self.printreplies = True
         from rich.console import Console
 
-        printer = Console(width=66).print
-    else:
-        def printer(msg, *args, style=None, **kwargs):
-            return print(msg, *args, **kwargs)
+        self.console = Console(width=66)
 
-    def say(
-        message=None, printreply=True, extract=True, eject=False, **api_kwargs
-    ):
-        nonlocal history
-        if eject is True:
-            return history
-        if message is None:
-            raise TypeError("unless ejecting history, must add a message")
-        history = addmsg(message, history)
-        response, _ = complete(history, _settings | api_kwargs)
+    def printon(self):
+        self.printreplies = True
+
+    def printoff(self):
+        self.printreplies = False
+
+    def undo(self):
+        self.messages = self.messages[:-2]
+        self.history.append(
+            {'event': 'undo', 'time': dt.datetime.now().isoformat()[:-3]}
+        )
+
+    def print_transcript(self, messages: Union[None, slice, int] = None):
+        if messages is not None:
+            active_messages = self.messages[messages]
+        else:
+            active_messages = self.messages
+        text = ""
+        for msg in active_messages:
+            text += (
+                f"[bold]### {msg['role'].upper()}:"
+                f"[/bold]\n{msg['content']}\n\n"
+            )
+        self.console.print(text)
+
+    def say(self, message: str, **api_kwargs):
+        messages = addmsg(message, self.messages)
+        response, _ = complete(messages, self.settings | api_kwargs)
+        status = 'ok'
         try:
             text = getchoice(response)
             term_msg = ""
         except IOError as ioe:
+            status = str(ioe)
             text = getchoice(response, raise_truncated=False)
             term_msg = f"[dark_orange bold]\n\n{str(ioe)}"
-        history = addreply(text, history)
-        if printreply is True:
-            printer(text)
-            if term_msg != "":
-                printer(text + term_msg)
-        if extract is True:
-            return text
-        return response
+        self.messages = addreply(text, messages)
+        self.history.append(
+            {
+                'event': 'api response',
+                'content': response,
+                'time': dt.datetime.now().isoformat()[:-3],
+                'settings': self.settings | api_kwargs,
+                'status': status
+            }
+        )
+        if self.printreplies is True:
+            self.console.print(text + term_msg)
 
-    return say
+
