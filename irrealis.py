@@ -48,6 +48,8 @@ class Irrealis(Dynamic, ABC):
                 "Cannot initialize an Irrealis in explicit stance with a "
                 "Mapping description."
             )
+        elif description is None:
+            source = None
         else:
             raise TypeError("unknown description format.")
         super().__init__(source, globals_, optional, lazy)
@@ -100,14 +102,14 @@ class Irrealis(Dynamic, ABC):
     __name__ = '<unloaded Irrealis>'
 
 
-def base_evoked(func: FunctionType, irrealis: type[Irrealis], *args, **kwargs):
+def base_evoked(func: FunctionType, *args, irrealis: type[Irrealis], **kwargs):
     return irrealis.from_function(func, *args, side='evocative', **kwargs)
 
 
 def base_implied(
     base: Union[FunctionType, str, dict],
-    irrealis: type[Irrealis],
     *args,
+    irrealis: type[Irrealis],
     **kwargs
 ):
     return irrealis(base, *args, stance='implicit', **kwargs)

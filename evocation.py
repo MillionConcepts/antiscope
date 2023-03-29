@@ -281,5 +281,5 @@ class OAIrrealis(Irrealis):
     default_api_settings = DEFAULT_SETTINGS
 
 
-evoked = curry(base_evoked)(irrealis=OAIrrealis)
-implied = curry(base_implied)(irrealis=OAIrrealis)
+evoked = curry(base_evoked, irrealis=OAIrrealis)
+implied = curry(base_implied, irrealis=OAIrrealis)
