@@ -3,20 +3,29 @@ reference implementation of irrealis-mood functionality w/the OpenAI API
 """
 import ast
 import datetime as dt
-from inspect import getcallargs
 import re
+from inspect import getcallargs
 from types import FunctionType
 from typing import Any, Mapping, Optional, Sequence, Union, Callable
 
-import openai
 from cytoolz import curry
+import openai
 
 from api_secrets import OPENAI_API_KEY, OPENAI_ORGANIZATION
-from dynamic import digsource, Dynamic, exc_report
-from irrealis import Irrealis, ImplicationFailure, EvocationFailure, \
-    base_evoked, base_implied
+from dynamic import Dynamic
+from irrealis import (
+    Irrealis,
+    ImplicationFailure,
+    EvocationFailure,
+    base_evoked,
+    base_implied,
+)
 from openai_settings import (
-    CHAT_MODELS, DEFAULT_SETTINGS, CHATGPT_NO, IEXEC_CHAT, REDEF_CHAT
+    CHAT_MODELS,
+    DEFAULT_SETTINGS,
+    CHATGPT_NO,
+    IEXEC_CHAT,
+    REDEF_CHAT,
 )
 from openai_utils import (
     chatinit,
@@ -24,59 +33,10 @@ from openai_utils import (
     getchoice,
     strip_codeblock,
 )
+from utilz import _strip_our_decorators, getdef, digsource, exc_report
 
 openai.api_key = OPENAI_API_KEY
 openai.organization = OPENAI_ORGANIZATION
-
-
-def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
-    if "__name__" in dir(defstem):
-        # functions and things like functions
-        fname = defstem.__name__
-        defstem = getdef(defstem)
-    else:
-        # just strings
-        if (match := re.search(r"def (.+)\(", defstem)) is not None:
-            fname = match.group(1)
-        else:
-            fname = None
-    received = strip_codeblock(
-        getchoice(response, choice_ix, raise_truncated), fname
-    )
-    if received.startswith("def"):
-        # TODO: add docstring and stuff back.
-        #  probably just extract the body first.
-        return received
-    return f"{defstem}\n{received}"
-
-
-EXPECTED_DECORATORS = ("@evoked", "@implied", "@cache")
-
-
-def _strip_our_decorators(defstring: str) -> str:
-    for decorator in EXPECTED_DECORATORS:
-        defstring = re.sub(f"{decorator}.*\n", "", defstring)
-    return defstring
-
-
-def getdef(func: Callable, get_docstring: bool = True) -> str:
-    """
-    return a string containing the 'definition portion' of func's
-    source code (including annotations and inline comments).
-    optionally also append its docstring (if it has one).
-
-    caveats:
-    1. may not work on functions with complicated inline comments
-     in their definitions.
-    2. does not work on lambdas; may not work on some other classes
-     of dynamically-defined functions.
-    """
-    defstring = re.search(
-        r"def.*\) ?(-> ?[^\n:]*)?:", digsource(func), re.M + re.DOTALL
-    ).group()
-    if (func.__doc__ is None) or (get_docstring is False):
-        return defstring
-    return defstring + '\n    """' + func.__doc__ + '"""\n'
 
 
 def request_function_definition(
@@ -128,7 +88,7 @@ def format_calltext(func, *args, **kwargs):
     callargs = getcallargs(func, *args, **kwargs)
     for k, v in callargs.items():
         if isinstance(v, str):
-            pretty_args[k] = f"\"\"\"{v}\"\"\""
+            pretty_args[k] = f'"""{v}"""'
         elif v.__repr__().startswith("<"):
             if "__name__" in dir(v):
                 pretty_args[k] = v.__name__
@@ -166,7 +126,7 @@ def request_function_call(
     _settings=DEFAULT_SETTINGS,
     **kwargs,
 ):
-    for_chat = _settings['model'] in CHAT_MODELS
+    for_chat = _settings["model"] in CHAT_MODELS
     prompt = construct_call_prompt(
         _func, args, kwargs, for_chat, _settings.get("system")
     )
@@ -196,7 +156,7 @@ def evoke(
     _settings: Mapping = DEFAULT_SETTINGS,
     _extended: bool = False,
     _processing_pipeline: tuple[Callable] = EVOCATION_PIPELINE,
-    **kwargs
+    **kwargs,
 ):
     """evoke a function, producing a possible result of its execution"""
     response, prompt = request_function_call(
@@ -214,7 +174,7 @@ def evoke(
     if _extended is False:
         return result
     if exception is not None:
-        report = exc_report(exception) | {'step': excstep}
+        report = exc_report(exception) | {"step": excstep}
     return result, response, prompt, report, exception
 
 
@@ -233,16 +193,15 @@ def imply(
 
 
 class OAIrrealis(Irrealis):
-
     def imply(self, _sideload_settings: Optional[Mapping] = None) -> str:
-        step = 'setup'
+        step = "setup"
         _settings = self.api_settings
         if _sideload_settings is not None:
             _settings = _settings | _sideload_settings
         try:
-            step = 'api_call'
+            step = "api_call"
             if isinstance(self.description, Mapping):
-                base = self.description['base']
+                base = self.description["base"]
                 res, prompt = request_function_definition(
                     _settings=_settings, **self.description
                 )
@@ -251,14 +210,14 @@ class OAIrrealis(Irrealis):
                 res, prompt = request_function_definition(
                     self.description, _settings=_settings
                 )
-            self.log(prompt, res, 'imply')
-            step = 'interpret_response'
+            self.log(prompt, res, "imply")
+            step = "interpret_response"
             return reconstruct_def(res, base)
         except KeyboardInterrupt:
             raise
         except Exception as exc:
             self.errors.append(
-                exc_report(exc) | {'category': 'imply', 'step': step}
+                exc_report(exc) | {"category": "imply", "step": step}
             )
             raise ImplicationFailure(exc)
 
@@ -267,7 +226,7 @@ class OAIrrealis(Irrealis):
         result, res, prompt, report, exc = evoke(
             self.func, *args, _extended=True, **kwargs
         )
-        self.log(prompt, res, 'evoke')
+        self.log(prompt, res, "evoke")
         if exc is not None:
             self.evoke_fail = True
             self.errors.append(report)
@@ -279,10 +238,10 @@ class OAIrrealis(Irrealis):
     def log(self, prompt, response, category):
         self.history.append(
             {
-                'prompt': prompt,
-                'response': response,
-                'category': category,
-                'time': dt.datetime.now().isoformat()[:-3]
+                "prompt": prompt,
+                "response": response,
+                "category": category,
+                "time": dt.datetime.now().isoformat()[:-3],
             }
         )
 
@@ -291,3 +250,24 @@ class OAIrrealis(Irrealis):
 
 evoked = curry(base_evoked, irrealis=OAIrrealis)
 implied = curry(base_implied, irrealis=OAIrrealis)
+
+
+def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
+    if "__name__" in dir(defstem):
+        # functions and things like functions
+        fname = defstem.__name__
+        defstem = getdef(defstem)
+    else:
+        # just strings
+        if (match := re.search(r"def (.+)\(", defstem)) is not None:
+            fname = match.group(1)
+        else:
+            fname = None
+    received = strip_codeblock(
+        getchoice(response, choice_ix, raise_truncated), fname
+    )
+    if received.startswith("def"):
+        # TODO: add docstring and stuff back.
+        #  probably just extract the body first.
+        return received
+    return f"{defstem}\n{received}"

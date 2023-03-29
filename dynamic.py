@@ -1,11 +1,8 @@
-import datetime as dt
-import traceback
-from functools import wraps
-from inspect import getsource, signature, Signature
-from types import CodeType, FunctionType
-from typing import Optional, Callable
+from inspect import signature, Signature
+from types import FunctionType
+from typing import Optional
 
-from cytoolz import nth
+from utilz import digsource, dontcare, compile_source, define, exc_report
 
 
 # TODO: some kind of "FunctionLike" type
@@ -16,55 +13,6 @@ class AlreadyLoadedError(ValueError):
 
 class UnreadyError(ValueError):
     pass
-
-
-def digsource(obj: Callable):
-    """
-    wrapper for inspect.getsource that attempts to work on objects like
-    Dynamic, functools.partial, etc.
-    """
-    if isinstance(obj, FunctionType):
-        return getsource(obj)
-    if "func" in dir(obj):
-        # noinspection PyUnresolvedReferences
-        return getsource(obj.func)
-    raise TypeError(f"cannot get source for type {type(obj)}")
-
-
-def get_codechild(code: CodeType, ix: int = 0) -> CodeType:
-    return nth(ix, filter(lambda c: isinstance(c, CodeType), code.co_consts))
-
-
-def exc_report(exc):
-    if exc is None:
-        return {}
-    return {
-        "time": dt.datetime.now().isoformat()[:-3],
-        "exception": exc,
-        "stack": tuple([a.name for a in traceback.extract_stack()[:-3]]),
-    }
-
-
-def dontcare(func, target=None):
-    @wraps(func)
-    def carelessly(*args, **kwargs):
-        try:
-            return func(*args, **kwargs)
-        except KeyboardInterrupt:
-            raise
-        except Exception as e:
-            target.append(exc_report(e) | {"func": func, 'category': 'call'})
-
-    return carelessly
-
-
-def compile_source(source: str):
-    return get_codechild(compile(source, "", "exec"))
-
-
-def define(code: CodeType, globals_: Optional[dict] = None) -> FunctionType:
-    globals_ = globals_ if globals_ is not None else globals()
-    return FunctionType(code, globals_)
 
 
 # TODO, maybe: optimization stuff re: kwarg mapping, etc. -- but if you wanted

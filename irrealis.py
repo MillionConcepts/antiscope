@@ -7,7 +7,9 @@ from typing import (
 
 from cytoolz import identity
 
-from dynamic import Dynamic, exc_report, digsource, UnreadyError
+from dynamic import Dynamic, UnreadyError
+from utilz import digsource, exc_report
+
 
 # TODO: async versions. maybe only needs to happen at implementation level,
 #  but there might be helper structures here. implementations still need to
@@ -22,6 +24,7 @@ class ImplicationFailure(Exception):
 
 class EvocationFailure(Exception):
     pass
+
 
 class Irrealis(Dynamic, ABC):
     """
@@ -156,14 +159,19 @@ class ImplicationInterior(ABC):
     def imply(self) -> str:
         raise NotImplementedError
 
+    def _raise_if_nonoptional(self):
+        if self.optional is True:
+            return
+        raise UnreadyError
+
     def setobjattr(self, attr, value):
         if self.obj is None:
-            raise UnreadyError
+            return self._raise_if_nonoptional()
         self.obj.__setattr__(attr, value)
 
     def getobjattr(self, attr):
         if self.obj is None:
-            raise UnreadyError
+            return self._raise_if_nonoptional()
         self.obj.__getattr__(attr)
 
     default_api_settings: MappingProxyType
