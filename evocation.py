@@ -6,7 +6,10 @@ import datetime as dt
 import re
 from inspect import getcallargs
 from types import FunctionType
-from typing import Any, Mapping, Optional, Sequence, Union, Callable
+# noinspection PyUnresolvedReferences, PyProtectedMember
+from typing import (
+    Any, Mapping, Optional, Sequence, Union, Callable, _GenericAlias
+)
 
 from cytoolz import curry
 import openai
@@ -18,7 +21,7 @@ from irrealis import (
     ImplicationFailure,
     EvocationFailure,
     base_evoked,
-    base_implied,
+    base_implied, ImplicationInterior,
 )
 from openai_settings import (
     CHAT_MODELS,
@@ -271,3 +274,48 @@ def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
         #  probably just extract the body first.
         return received
     return f"{defstem}\n{received}"
+
+
+def request_object_construction(
+    base: Union[str, Mapping, None] = None,
+    implied_type: Union[None, type, _GenericAlias] = None,
+    *,
+    language: str = "Python",
+    _settings: Mapping = DEFAULT_SETTINGS,
+):
+    if _settings.get('model') not in CHAT_MODELS:
+        raise NotImplementedError(
+            "Base (non-chat) completions not yet implemented for "
+            "request_object_construction."
+        )
+    if isinstance(base, Mapping):
+        raise NotImplementedError(
+            "Mapping expansion not yet implemented for the `base` "
+            "argument of request_object_construction."
+        )
+    prompt = format_construction_prompt(base, implied_type, language)
+    return complete(prompt, _settings)
+
+
+def format_construction_prompt(base, implied_type, language):
+    if base is not None:
+        prompt = (
+            f"Please show me:\n###\n{base}\n###\nExpress your response as a "
+            f"valid {language} statement"
+        )
+    else:
+        prompt = f"Please show me a valid {language} statement"
+    if implied_type is not None:
+        ftype = str(implied_type).replace("typing.", "")
+        prompt += f" of type {ftype}."
+    prompt += " Do not write explanations."
+    return prompt
+
+
+class OAIImplicationInterior(ImplicationInterior):
+
+    def imply(self, *args, **kwargs) -> str:
+        pass
+
+
+
