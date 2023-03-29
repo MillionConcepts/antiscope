@@ -297,10 +297,11 @@ def request_object_construction(
     return complete(prompt, _settings)
 
 
-def format_construction_prompt(base, implied_type, language):
+def format_construction_prompt(base, implied_type, language="Python"):
     if base is not None:
         prompt = (
-            f"Please show me:\n###\n{base}\n###\nExpress your response as a "
+            f"Please write me a valid {language} statement that expresses the "
+            f"idea of \n###\n{base}\n###\nExpress your response as a "
             f"valid {language} statement"
         )
     else:
@@ -315,6 +316,7 @@ def format_construction_prompt(base, implied_type, language):
 class OAIImplicationInterior(ImplicationInterior):
 
     def imply(self, *args, **kwargs) -> str:
+        # TODO: strip assignment expressions
         pass
 
 

@@ -1,11 +1,12 @@
 """generic functional/formatting utilities"""
+import ast
 import datetime as dt
 import re
 import traceback
 from functools import wraps
 from inspect import getsource
 from types import FunctionType, CodeType
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence
 
 from cytoolz import nth
 
@@ -75,6 +76,21 @@ def compile_source(source: str):
 def define(code: CodeType, globals_: Optional[dict] = None) -> FunctionType:
     globals_ = globals_ if globals_ is not None else globals()
     return FunctionType(code, globals_)
+
+
+# TODO: will currently fail for multi-target assignments
+# noinspection PyUnresolvedReferences
+def terminal_assignment_line(parsed: Sequence[ast.stmt]):
+    for statement in reversed(parsed):
+        if isinstance(statement, ast.Assign):
+            return True, statement.lineno - 1, statement.targets[0].id
+    return False, None, None
+
+
+def pluck_from_execution(text, *ex_args, **ex_kw):
+    _, _, varname = terminal_assignment_line(ast.parse(text).body)
+    exec(text, *ex_args, **ex_kw)
+    return locals()[varname]
 
 
 def exc_report(exc):

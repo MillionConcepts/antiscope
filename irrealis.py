@@ -9,7 +9,7 @@ from typing import (
 from cytoolz import identity
 
 from dynamic import Dynamic, UnreadyError, AlreadyLoadedError
-from utilz import digsource, exc_report
+from utilz import digsource, exc_report, pluck_from_execution
 
 
 # TODO: async versions. maybe only needs to happen at implementation level,
@@ -148,7 +148,7 @@ class ImplicationInterior(ABC):
         lazy: bool = True,
         auto_reimply: bool = False,
         load_on_access: bool = True,
-        do_eval: bool = False,
+        eval_mode: Literal["literal", "eval", "exec"] = "literal",
         auto_retry_failed: bool = False,
         **api_kwargs
     ):
@@ -160,7 +160,7 @@ class ImplicationInterior(ABC):
         self.imply_fail = False
         self.optional = optional
         self.lazy = lazy
-        self.do_eval = do_eval
+        self.eval_mode = eval_mode
         self.obj = None
         self.source = None
         self.load_on_access = load_on_access
@@ -196,18 +196,23 @@ class ImplicationInterior(ABC):
             return False
         return self.evaluate(evaluator=evaluator)
 
-    def evaluate(self, *args, evaluator=None, **kwargs) -> bool:
+    def evaluate(self, *args, globals_=None, **kwargs) -> bool:
         # TODO, maybe: try checking for the string representation of the
         #  class constructor -- if implied_type is of type `type` --
         #  extracting text from the 'call', and feeding it as a call to the
         #  class constructor? could also just exec it in some cases...
         #  this might want to be implementation-specific.
-        if evaluator is None:
-            evaluator = eval if self.do_eval is True else ast.literal_eval
+        kwargs['globals'] = globals_ if globals_ is not None else globals()
+
         self.eval_fail = True
         try:
-            # TODO, maybe: pass, e.g., locals/globals, in some nicer way.
-            self.obj = evaluator(self.source, *args, **kwargs)
+            # TODO, pass locals/globals in some nicer way
+            if self.eval_mode == "literal":
+                self.obj = ast.literal_eval(self.source)
+            elif self.eval_mode == "eval":
+                self.obj = eval(self.source, *args, **kwargs)
+            elif self.eval_mode == "exec":
+                self.obj = pluck_from_execution(self.source, *args, **kwargs)
             self.eval_fail = False
             return True
         except KeyboardInterrupt:
