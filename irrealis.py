@@ -334,10 +334,12 @@ def base_impliedobj(
     implied_type: Union[None, type, _GenericAlias] = None,
     *args,
     implication: type[Implication],
+    lazy: bool = False,
     **kwargs
-):
+) -> Union[Implication, Any]:
+    if lazy is True:
+        return implication(base, implied_type, *args, lazy=True, **kwargs)
     return implication(base, implied_type, *args, lazy=False, **kwargs).obj
-
 
 """quasigraphs"""
 
