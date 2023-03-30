@@ -9,6 +9,7 @@ from openai_settings import EP_KWARGS, CHAT_MODELS, DEFAULT_SETTINGS
 
 
 def _codestrippable(line):
+    # TODO: redundant
     if re.match(r"```(\w+)?", line):
         return True
     if re.match(r">>>", line):
@@ -20,6 +21,9 @@ def strip_codeblock(text, fname: str = None):
     crudely strip markdown codeblock formatting, conventional Python terminal
     representation, and any precursor to an (undesired) function redeclaration
     """
+    # TODO: maybe should be a separate function
+    if "```" in text:
+        text = re.search(r"```(\w+\n)?(.*)(```|^)", text, re.DOTALL).group(2)
     # TODO: extract content of """ blocks?
     lines = list(filter(None, text.split("\n")))
     if fname is not None:

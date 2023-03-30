@@ -169,20 +169,21 @@ class Implication(ABC):
         # TODO: can probably reuse this + Irrealis.load
         if (self.source is not None) and (reload is False):
             raise AlreadyLoadedError
-        self.imply_fail, exc = True, None
+        self.imply_fail, exception = True, None
         try:
             self.source = self.imply()
             self.imply_fail = False
         except KeyboardInterrupt:
             raise
         except ImplicationFailure as exc:
+            exception = exc
             # this case means exception was logged by the implementation
             # of self.imply
-            pass
         except Exception as exc:
+            exception = exc
             self.errors.append(exc_report(exc) | {'category': 'imply'})
         if self.imply_fail is True:
-            self._raise_if_nonoptional(ImplicationFailure(str(exc)))
+            self._raise_if_nonoptional(ImplicationFailure(str(exception)))
             return False
         return self.evaluate()
 
