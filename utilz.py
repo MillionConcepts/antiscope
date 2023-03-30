@@ -87,6 +87,15 @@ def terminal_assignment_line(parsed: Sequence[ast.stmt]):
     return False, None, None
 
 
+def filter_assignment(text):
+    has_assign, ix, varname = terminal_assignment_line(ast.parse(text).body)
+    if has_assign is False:
+        return text
+    text = "\n".join(text.split("\n")[ix:])
+    text = re.sub(fr"\s*{varname}\s*=\s*", "", text)
+    return text
+
+
 def pluck_from_execution(text, *ex_args, **ex_kw):
     _, _, varname = terminal_assignment_line(ast.parse(text).body)
     exec(text, *ex_args, **ex_kw)

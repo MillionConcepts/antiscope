@@ -21,7 +21,7 @@ from irrealis import (
     ImplicationFailure,
     EvocationFailure,
     base_evoked,
-    base_implied, ImplicationInterior,
+    base_implied, Implication, ImplicationWrapper, base_impliedobj,
 )
 from openai_settings import (
     CHAT_MODELS,
@@ -34,7 +34,7 @@ from openai_utils import (
     chatinit,
     complete,
     getchoice,
-    strip_codeblock,
+    strip_codeblock, addmsg,
 )
 from utilz import _strip_our_decorators, getdef, digsource, exc_report
 
@@ -42,6 +42,7 @@ openai.api_key = OPENAI_API_KEY
 openai.organization = OPENAI_ORGANIZATION
 
 
+# TODO: add more control over chat context
 def request_function_definition(
     base: Union[str, FunctionType, None],
     name: Optional[str] = None,
@@ -214,7 +215,7 @@ class OAIrrealis(Irrealis):
                     self.description, _settings=_settings
                 )
             self.log(prompt, res, "imply")
-            step = "interpret_response"
+            step = "extract_response"
             return reconstruct_def(res, base)
         except KeyboardInterrupt:
             raise
@@ -249,10 +250,6 @@ class OAIrrealis(Irrealis):
         )
 
     default_api_settings = DEFAULT_SETTINGS
-
-
-evoked = curry(base_evoked, irrealis=OAIrrealis)
-implied = curry(base_implied, irrealis=OAIrrealis)
 
 
 def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
@@ -294,30 +291,64 @@ def request_object_construction(
             "argument of request_object_construction."
         )
     prompt = format_construction_prompt(base, implied_type, language)
-    return complete(prompt, _settings)
+    if (messages := _settings.get('message_context')) is None:
+        messages = chatinit(prompt, _settings.get('system'))
+    else:
+        messages = addmsg(prompt, messages)
+    return complete(messages, _settings)
 
 
 def format_construction_prompt(base, implied_type, language="Python"):
-    if base is not None:
-        prompt = (
-            f"Please write me a valid {language} statement that expresses the "
-            f"idea of \n###\n{base}\n###\nExpress your response as a "
-            f"valid {language} statement"
-        )
-    else:
-        prompt = f"Please show me a valid {language} statement"
+    prompt = f"{language} code that constructs an object "
     if implied_type is not None:
         ftype = str(implied_type).replace("typing.", "")
-        prompt += f" of type {ftype}."
-    prompt += " Do not write explanations."
-    return prompt
+        prompt += f"of type {ftype} "
+    if base is not None:
+        prompt += f"that expresses {base}. "
+    return prompt + "Do not write explanations."
 
 
-class OAIImplicationInterior(ImplicationInterior):
+# TODO: can probably reuse some of this code with OAIrrealis
+class OAImplication(Implication):
 
-    def imply(self, *args, **kwargs) -> str:
-        # TODO: strip assignment expressions
-        pass
+    def imply(self) -> str:
+        step = "setup"
+        try:
+            step = "api_call"
+            res, prompt = request_object_construction(
+                self.description,
+                self.implied_type,
+                _settings=self.api_settings
+            )
+            self.log(prompt, res, "imply")
+            step = "extract_response"
+            return strip_codeblock(getchoice(res))
+        except KeyboardInterrupt:
+            raise
+        except Exception as exc:
+            self.errors.append(
+                exc_report(exc) | {"category": "imply", "step": step}
+            )
+            raise ImplicationFailure(exc)
+
+    def log(self, prompt, response, category):
+        self.history.append(
+            {
+                "prompt": prompt,
+                "response": response,
+                "category": category,
+                "time": dt.datetime.now().isoformat()[:-3],
+            }
+        )
+
+    default_api_settings = DEFAULT_SETTINGS
 
 
+class OAImplicationWrapper(ImplicationWrapper):
 
+    _constructor = OAImplication
+
+
+evoked = curry(base_evoked, irrealis=OAIrrealis)
+implied = curry(base_implied, irrealis=OAIrrealis)
+iobj = curry(base_impliedobj, implication=OAImplication)

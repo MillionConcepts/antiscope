@@ -9,7 +9,8 @@ from typing import (
 from cytoolz import identity
 
 from dynamic import Dynamic, UnreadyError, AlreadyLoadedError
-from utilz import digsource, exc_report, pluck_from_execution
+from utilz import digsource, exc_report, pluck_from_execution, \
+    filter_assignment
 
 
 # TODO: async versions. maybe only needs to happen at implementation level,
@@ -120,26 +121,13 @@ class Irrealis(Dynamic, ABC):
     __name__ = '<unloaded Irrealis>'
 
 
-def base_evoked(func: FunctionType, *args, irrealis: type[Irrealis], **kwargs):
-    return irrealis.from_function(func, *args, side='evocative', **kwargs)
-
-
-def base_implied(
-    base: Union[FunctionType, str, dict],
-    *args,
-    irrealis: type[Irrealis],
-    **kwargs
-):
-    return irrealis(base, *args, stance='implicit', **kwargs)
-
-
 # TODO: should this actually have a Dynamic-analogous base class that, like,
 #  just evaluates source?
 class EvaluationError(Exception):
     pass
 
 
-class ImplicationInterior(ABC):
+class Implication(ABC):
     def __init__(
         self,
         description: Union[str, Mapping, None],
@@ -166,22 +154,24 @@ class ImplicationInterior(ABC):
         self.load_on_access = load_on_access
         self.auto_retry_failed = auto_retry_failed
         self.errors = []
+        self.history = []
+        if self.lazy is False:
+            self.load()
 
-    def _maybe_load(self, *args, on_access, reload=False, **kwargs) -> bool:
+    def _maybe_load(self, on_access, reload=False) -> bool:
         if (self.load_on_access is False) and (on_access is True):
             return False
         if (self.imply_fail or self.eval_fail) and not self.auto_retry_failed:
             return False
-        return self.load(*args, reload=reload, **kwargs)
+        return self.load(reload=reload)
 
-    def load(self, *args, reload=False, **kwargs) -> bool:
+    def load(self, reload=False) -> bool:
         # TODO: can probably reuse this + Irrealis.load
-        evaluator = kwargs.pop('evaluator', None)
         if (self.source is not None) and (reload is False):
             raise AlreadyLoadedError
         self.imply_fail, exc = True, None
         try:
-            self.source = self.imply(*args, **kwargs)
+            self.source = self.imply()
             self.imply_fail = False
         except KeyboardInterrupt:
             raise
@@ -194,21 +184,15 @@ class ImplicationInterior(ABC):
         if self.imply_fail is True:
             self._raise_if_nonoptional(ImplicationFailure(str(exc)))
             return False
-        return self.evaluate(evaluator=evaluator)
+        return self.evaluate()
 
     def evaluate(self, *args, globals_=None, **kwargs) -> bool:
-        # TODO, maybe: try checking for the string representation of the
-        #  class constructor -- if implied_type is of type `type` --
-        #  extracting text from the 'call', and feeding it as a call to the
-        #  class constructor? could also just exec it in some cases...
-        #  this might want to be implementation-specific.
         kwargs['globals'] = globals_ if globals_ is not None else globals()
-
         self.eval_fail = True
         try:
             # TODO, pass locals/globals in some nicer way
             if self.eval_mode == "literal":
-                self.obj = ast.literal_eval(self.source)
+                self.obj = ast.literal_eval(filter_assignment(self.source))
             elif self.eval_mode == "eval":
                 self.obj = eval(self.source, *args, **kwargs)
             elif self.eval_mode == "exec":
@@ -223,7 +207,7 @@ class ImplicationInterior(ABC):
         return False
 
     @abstractmethod
-    def imply(self, *args, **kwargs) -> str:
+    def imply(self) -> str:
         raise NotImplementedError
 
     def _raise_if_nonoptional(self, exctype: Exception = UnreadyError):
@@ -246,86 +230,112 @@ class ImplicationInterior(ABC):
 
 # TODO, maybe: implement auto-reimply for this. might need to limit it to
 #  particular attributes. Could basically just freeze all execution.
+# TODO: all the magic methods. not very useful right now.
 # noinspection PyProtectedMember
-class Implication:
+class ImplicationWrapper:
 
     def __init__(self, *args, **kw):
-        if "__constructor" in kw.keys():
-            self.__constructor = kw.pop('__constructor')
-        elif "__constructor" not in dir(self):
+        if "_constructor" in kw.keys():
+            self._constructor = kw.pop('_constructor')
+        elif "_constructor" not in dir(self):
             raise TypeError(
-                "Must pass a __constructor kwarg to __init__ "
-                "if no __constructor attribute already exists."
+                "Must pass a _constructor kwarg to __init__ "
+                "if no _constructor attribute already exists."
             )
-        self.__interior = self.__constructor(*args, **kw)
-        self.__optional = self.__interior.optional
-        if self.__interior.lazy is False:
+        self._interior = self._constructor(*args, **kw)
+        self._optional = self._interior.optional
+        if self._interior.lazy is False:
             self.load()
             return
-        if self.__interior.load_on_access is False:
+        if self._interior.load_on_access is False:
             return
-        self.__initialized = True
+        self._initialized = True
 
     def load(self, *args, **kwargs):
-        load_success = self.__interior.load(*args, **kwargs)
-        self.__initialized = load_success
-        self.__loaded = load_success
+        load_success = self._interior.load(*args, **kwargs)
+        self._initialized = load_success
+        self._loaded = load_success
 
-    # TODO: the difference in functionality re: fallback to __interior's
+    # TODO: the difference in functionality re: fallback to _interior's
     #  attributes during initialization and loading, and __getattribute__ and
     #  __setattribute__, is concerning. need to work with some implementations
     #  to see what behaviors make most sense.
 
     def __getattribute__(self, attr):
-        if attr == "__private_attributes":
-            return object.__getattribute__(self, "__private_attributes")
-        if attr in self.__private_attributes:
-            return object.__getattribute__(self, attr)
+        if attr == "_getattr":
+            return object.__getattribute__(self, "_getattr")
+        if attr == "_private_attributes":
+            return self._getattr(attr)
+        if attr in self._private_attributes:
+            return self._getattr(attr)
         if attr == "__setattribute__":
-            return self.__getattr("__setattribute__")
-        if self.__initialized is False:
+            return self._getattr(attr)
+        if self._initialized is False:
             try:
-                return self.__getattr(attr)
+                return self._getattr(attr)
             except AttributeError:
-                return self.__interior.__getattribute__(attr)
-        if self.__loaded is False:
-            self.__loaded = self.__interior._maybe_load(on_access=True)
-        if self.__loaded is False:
-            return self.__getattr(attr)
-        return self.__interior.getobjattr(attr)
+                return self._interior.__getattribute__(attr)
+        if self._loaded is False:
+            self._loaded = self._interior._maybe_load(on_access=True)
+        if self._loaded is False:
+            return self._getattr(attr)
+        return self._interior.getobjattr(attr)
 
     def __setattr__(self, attr, value):
-        if self.__initialized is False:
-            return self.__setattr(attr, value)
-        if attr in self.__private_attributes:
-            return self.__setattr(attr, value)
-        if self.__loaded is False:
-            self.__loaded = self.__interior._maybe_load(on_access=True)
-        if self.__loaded is False:
-            return self.__setattr(attr, value)
-        return self.__interior.setobjattr(attr, value)
+        if self._initialized is False:
+            return self._setattr(attr, value)
+        if attr in self._private_attributes:
+            return self._setattr(attr, value)
+        if self._loaded is False:
+            self._loaded = self._interior._maybe_load(on_access=True)
+        if self._loaded is False:
+            return self._setattr(attr, value)
+        return self._interior.setobjattr(attr, value)
 
-    def __getattr(self, attr):
+    def _getattr(self, attr):
         return object.__getattribute__(self, attr)
 
-    def __setattr(self, attr, value):
+    def _setattr(self, attr, value):
         return object.__setattr__(self, attr, value)
 
-    __initialized = False
-    __loaded = False
-    __constructor: Union[
-        ImplicationInterior, Callable[[Any], ImplicationInterior]
+    _initialized = False
+    _loaded = False
+    _constructor: Union[
+        Implication, Callable[[Any], Implication]
     ]
-    __private_attributes = (
-        "__interior",
-        "__initialized",
-        "__loaded",
-        "__optional",
-        "__interior_constructor",
-        "__getattr",
-        "__setattr",
-        "__private_attributes",
+    _private_attributes = (
+        "_interior",
+        "_initialized",
+        "_loaded",
+        "_optional",
+        "_interior_constructor",
+        "_getattr",
+        "_setattr",
+        "_private_attributes",
     )
+
+
+def base_evoked(func: FunctionType, *args, irrealis: type[Irrealis], **kwargs):
+    return irrealis.from_function(func, *args, side='evocative', **kwargs)
+
+
+def base_implied(
+    base: Union[FunctionType, str, dict],
+    *args,
+    irrealis: type[Irrealis],
+    **kwargs
+):
+    return irrealis(base, *args, stance='implicit', **kwargs)
+
+
+def base_impliedobj(
+    base: Union[str, Mapping, None],
+    implied_type: Union[None, type, _GenericAlias] = None,
+    *args,
+    implication: type[Implication],
+    **kwargs
+):
+    return implication(base, implied_type, *args, lazy=False, **kwargs).obj
 
 
 """quasigraphs"""
