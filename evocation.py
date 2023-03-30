@@ -6,6 +6,7 @@ import datetime as dt
 import re
 from inspect import getcallargs, getdoc, get_annotations
 from types import FunctionType, MappingProxyType
+
 # noinspection PyUnresolvedReferences, PyProtectedMember
 from typing import (
     Any,
@@ -39,15 +40,21 @@ from openai_settings import (
     DEFAULT_SETTINGS,
     CHATGPT_NO,
     IEXEC_CHAT,
-    REDEF_CHAT, CHATGPT_FORMAT,
+    REDEF_CHAT,
+    CHATGPT_FORMAT,
 )
 from openai_utils import (
     complete,
     getchoice,
     strip_codeblock,
 )
-from utilz import _strip_our_decorators, getdef, digsource, exc_report, \
-    filter_assignment
+from utilz import (
+    _strip_our_decorators,
+    getdef,
+    digsource,
+    exc_report,
+    filter_assignment,
+)
 
 openai.api_key = OPENAI_API_KEY
 openai.organization = OPENAI_ORGANIZATION
@@ -57,7 +64,7 @@ def format_type(type_):
     if isinstance(type_, type):
         return type_.__name__
     else:
-        return re.sub(fr"(typing|types)\.", "", str(type_))
+        return re.sub(rf"(typing|types)\.", "", str(type_))
 
 
 # TODO: add more control over chat context
@@ -168,15 +175,12 @@ def argformat_docstring(func: FunctionType, *args, **kwargs) -> str:
 
 
 def command_from_call(
-    _func: FunctionType,
-    *args,
-    _settings: Mapping = DEFAULT_SETTINGS,
-    **kwargs
+    _func: FunctionType, *args, _settings: Mapping = DEFAULT_SETTINGS, **kwargs
 ):
     prompt = argformat_docstring(_func, *args, **kwargs)
-    ftype = format_type(get_annotations(_func).get('return'))
+    ftype = format_type(get_annotations(_func).get("return"))
     no_parse = True
-    if ftype not in ('str', 'None'):
+    if ftype not in ("str", "None"):
         no_parse = False
         prompt += f"\nformat your response as a Python object of type {ftype}."
     if _settings.get("noexplain") is not False:
@@ -210,11 +214,7 @@ def literalizer(text: str):
 
 
 EVOCATION_PIPELINE = MappingProxyType(
-    {
-        'choose': getchoice,
-        'strip': strip_codeblock,
-        'parse': literalizer
-    }
+    {"choose": getchoice, "strip": strip_codeblock, "parse": literalizer}
 )
 
 
@@ -247,7 +247,7 @@ def evoke(
     exception, excstep, report = None, None, None
     result = response
     for name, step in _processing_pipeline.items():
-        if (name == 'parse') and (no_parse is True):
+        if (name == "parse") and (no_parse is True):
             # no_parse implies that we simply want to use the content of the
             # response as a string
             continue
