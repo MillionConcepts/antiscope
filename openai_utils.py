@@ -60,7 +60,11 @@ def _call_openai_completion(prompt, _settings):
     return response, prompt
 
 
-def _call_openai_chat_completion(messages, _settings):
+def _call_openai_chat_completion(prompt, _settings):
+    if (messages := _settings.get("message_context")) is None:
+        messages = chatinit(prompt, _settings.get("system"))
+    else:
+        messages = addmsg(prompt, messages)
     response = openai.ChatCompletion.create(
         messages=messages,
         **keyfilter(lambda k: k in EP_KWARGS["chat-completions"], _settings),

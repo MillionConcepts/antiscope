@@ -4,15 +4,22 @@ reference implementation of irrealis-mood functionality w/the OpenAI API
 import ast
 import datetime as dt
 import re
-from inspect import getcallargs
-from types import FunctionType
+from inspect import getcallargs, getdoc, get_annotations
+from types import FunctionType, MappingProxyType
 # noinspection PyUnresolvedReferences, PyProtectedMember
 from typing import (
-    Any, Mapping, Optional, Sequence, Union, Callable, _GenericAlias
+    Any,
+    Mapping,
+    Optional,
+    Sequence,
+    Union,
+    Callable,
+    _GenericAlias,
+    Literal,
 )
 
-from cytoolz import curry
 import openai
+from cytoolz import curry
 
 from api_secrets import OPENAI_API_KEY, OPENAI_ORGANIZATION
 from dynamic import Dynamic
@@ -21,25 +28,35 @@ from irrealis import (
     ImplicationFailure,
     EvocationFailure,
     base_evoked,
-    base_implied, Implication, ImplicationWrapper, base_impliedobj,
+    base_implied,
+    Implication,
+    ImplicationWrapper,
+    base_impliedobj,
+    Performative,
 )
 from openai_settings import (
     CHAT_MODELS,
     DEFAULT_SETTINGS,
     CHATGPT_NO,
     IEXEC_CHAT,
-    REDEF_CHAT,
+    REDEF_CHAT, CHATGPT_FORMAT,
 )
 from openai_utils import (
-    chatinit,
     complete,
     getchoice,
-    strip_codeblock, addmsg,
+    strip_codeblock,
 )
-from utilz import _strip_our_decorators, getdef, digsource, exc_report
+from utilz import _strip_our_decorators, getdef, digsource, exc_report, \
+    filter_assignment
 
 openai.api_key = OPENAI_API_KEY
 openai.organization = OPENAI_ORGANIZATION
+
+def format_type(type_):
+    if isinstance(type_, type):
+        return type_.__name__
+    else:
+        return re.sub("(typing|types)\.", "", str(type_))
 
 
 # TODO: add more control over chat context
@@ -70,7 +87,7 @@ def request_function_definition(
         parts.append(f"Example outputs: {return_like}\n")
     prompt = "".join(parts)
     if _settings["model"] in CHAT_MODELS:
-        prompt = chatinit(prompt + CHATGPT_NO, _settings.get("system"))
+        prompt += CHATGPT_NO
     return complete(prompt, _settings)
 
 
@@ -79,9 +96,7 @@ def _request_redefinition(
 ):
     prompt = getdef(func)
     if _settings["model"] in CHAT_MODELS:
-        prompt = chatinit(
-            f"{REDEF_CHAT + CHATGPT_NO}:\n{prompt}", _settings.get("system")
-        )
+        prompt = f"{REDEF_CHAT + CHATGPT_FORMAT + CHATGPT_NO}:\n{prompt}"
     else:
         prompt = "# use this function:\n" + prompt
     return complete(prompt, _settings)
@@ -124,7 +139,7 @@ def format_calltext(func, *args, **kwargs):
     return callstring
 
 
-def request_function_call(
+def wish_for_call(
     _func: FunctionType,
     *args,
     _settings=DEFAULT_SETTINGS,
@@ -141,40 +156,109 @@ def construct_call_prompt(_func, args, kwargs, for_chat=True, system=None):
     callstring = format_calltext(_func, *args, **kwargs)
     source = _strip_our_decorators(digsource(_func))
     if for_chat is True:
-        prefix = IEXEC_CHAT + CHATGPT_NO + "\n###\n"
+        prefix = IEXEC_CHAT + CHATGPT_FORMAT + CHATGPT_NO + "\n###\n"
         prompt = f"{prefix}\n{source}\n{callstring}\n"
-        prompt = chatinit(prompt, system)
     else:
         prefix = "# result of the function call\n>>> "
         prompt = f"{source}\n{prefix}{callstring}\n"
     return prompt
 
 
-EVOCATION_PIPELINE = (getchoice, strip_codeblock, ast.literal_eval)
+def argformat_docstring(func: FunctionType, *args, **kwargs) -> str:
+    return getdoc(func).format(**getcallargs(func, *args, **kwargs))
 
 
-# TODO: this might actually be usable as a more generic `evoke` pattern.
+def command_from_call(
+    _func: FunctionType,
+    *args,
+    _settings: Mapping = DEFAULT_SETTINGS,
+    **kwargs
+):
+    prompt = argformat_docstring(_func, *args, **kwargs)
+    ftype = format_type(get_annotations(_func).get('return'))
+    no_parse = True
+    if ftype not in ('str', 'None'):
+        no_parse = False
+        prompt += f"\nformat your response as a Python object of type {ftype}."
+    if _settings.get("noexplain") is not False:
+        prompt += "\nDo not write explanations."
+    response, _ = complete(prompt, _settings)
+    return response, prompt, no_parse
+
+
+FALLBACK_STRIPPABLES = "".join(('"', "'", "`", "\n", " ", "."))
+
+
+# noinspection PyUnboundLocalVariable
+def literalizer(text: str):
+    for i in range(5):
+        try:
+            if i == 0:
+                return ast.literal_eval(text)
+            if i == 1:
+                return ast.literal_eval(text.strip(FALLBACK_STRIPPABLES))
+            if i == 2:
+                lines = text.split("\n")
+                lastline = lines[-1].strip(FALLBACK_STRIPPABLES)
+                return ast.literal_eval(lastline)
+            if i == 3:
+                return ast.literal_eval(filter_assignment(lastline))
+            if i == 4:
+                return ast.literal_eval(re.sub(".*=", "", lastline))
+        except (SyntaxError, ValueError) as exc:
+            exception = exc
+    raise exception
+
+
+EVOCATION_PIPELINE = MappingProxyType(
+    {
+        'choose': getchoice,
+        'strip': strip_codeblock,
+        'parse': literalizer
+    }
+)
+
+
+# TODO: this might actually be usable, at least in part,  as a more generic
+#  `evoke` pattern.
 def evoke(
     _func: FunctionType,
     *args,
     _settings: Mapping = DEFAULT_SETTINGS,
+    _performativity: Literal[Performative],
     _extended: bool = False,
-    _processing_pipeline: tuple[Callable] = EVOCATION_PIPELINE,
+    _processing_pipeline: Mapping[str, Callable] = EVOCATION_PIPELINE,
     **kwargs,
 ):
     """evoke a function, producing a possible result of its execution"""
-    response, prompt = request_function_call(
-        _func, *args, _settings=_settings, **kwargs
-    )
+    no_parse = False
+    if _performativity == "wish":
+        response, prompt = wish_for_call(
+            _func, *args, _settings=_settings, **kwargs
+        )
+    elif _performativity == "command":
+        response, prompt, no_parse = command_from_call(
+            _func, *args, _settings=_settings, **kwargs
+        )
+    else:
+        raise ValueError(
+            f"This function only accepts 'wish' and 'command' performatives "
+            f"(received {_performativity})"
+        )
     exception, excstep, report = None, None, None
     result = response
-    for step in _processing_pipeline:
+    for name, step in _processing_pipeline.items():
+        if (name == 'parse') and (no_parse is True):
+            # no_parse implies that we simply want to use the content of the
+            # response as a string
+            continue
         try:
             result = step(result)
         except KeyboardInterrupt:
             raise
         except Exception as exc:
             exception, excstep = exc, step.__name__
+            break
     if _extended is False:
         return result
     if exception is not None:
@@ -228,14 +312,22 @@ class OAIrrealis(Irrealis):
     def evoke(self, *args, _optional=None, **kwargs):
         _optional = self.optional if _optional is None else _optional
         result, res, prompt, report, exc = evoke(
-            self.func, *args, _extended=True, **kwargs
+            self.func,
+            *args,
+            _extended=True,
+            _performativity=self.performativity,
+            _settings=self.api_settings,
+            **kwargs,
         )
         self.log(prompt, res, "evoke")
         if exc is not None:
             self.evoke_fail = True
             self.errors.append(report)
             if _optional is True:
-                return result
+                try:
+                    return getchoice(result, raise_truncated=False)
+                except TypeError:
+                    return result
             raise EvocationFailure(exc)
         return result
 
@@ -249,6 +341,7 @@ class OAIrrealis(Irrealis):
             }
         )
 
+    performativity: Performative = "wish"
     default_api_settings = DEFAULT_SETTINGS
 
 
@@ -280,7 +373,7 @@ def request_object_construction(
     language: str = "Python",
     _settings: Mapping = DEFAULT_SETTINGS,
 ):
-    if _settings.get('model') not in CHAT_MODELS:
+    if _settings.get("model") not in CHAT_MODELS:
         raise NotImplementedError(
             "Base (non-chat) completions not yet implemented for "
             "request_object_construction."
@@ -291,26 +384,20 @@ def request_object_construction(
             "argument of request_object_construction."
         )
     prompt = format_construction_prompt(base, implied_type, language)
-    if (messages := _settings.get('message_context')) is None:
-        messages = chatinit(prompt, _settings.get('system'))
-    else:
-        messages = addmsg(prompt, messages)
-    return complete(messages, _settings)
+    return complete(prompt, _settings)
 
 
 def format_construction_prompt(base, implied_type, language="Python"):
     prompt = f"{language} code that constructs an object "
     if implied_type is not None:
-        ftype = str(implied_type).replace("typing.", "")
-        prompt += f"of type {ftype} "
+        prompt += f"of type {format_type(implied_type)} "
     if base is not None:
-        prompt += f"that expresses {base}. "
-    return prompt + "Do not write explanations."
+        prompt += f"that expresses {base} "
+    return prompt + ". Do not write explanations."
 
 
 # TODO: can probably reuse some of this code with OAIrrealis
 class OAImplication(Implication):
-
     def imply(self) -> str:
         step = "setup"
         try:
@@ -318,7 +405,7 @@ class OAImplication(Implication):
             res, prompt = request_object_construction(
                 self.description,
                 self.implied_type,
-                _settings=self.api_settings
+                _settings=self.api_settings,
             )
             self.log(prompt, res, "imply")
             step = "extract_response"
@@ -342,13 +429,14 @@ class OAImplication(Implication):
         )
 
     default_api_settings = DEFAULT_SETTINGS
+    literalize = literalizer
 
 
 class OAImplicationWrapper(ImplicationWrapper):
-
     _constructor = OAImplication
 
 
 evoked = curry(base_evoked, irrealis=OAIrrealis)
 implied = curry(base_implied, irrealis=OAIrrealis)
+commanded = curry(base_evoked, irrealis=OAIrrealis, performativity="command")
 iobj = curry(base_impliedobj, implication=OAImplication)

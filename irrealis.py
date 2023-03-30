@@ -1,16 +1,25 @@
 import ast
 from abc import ABC, abstractmethod
 from types import MappingProxyType, FunctionType
+
 # noinspection PyUnresolvedReferences, PyProtectedMember
 from typing import (
-    Optional, Mapping, Literal, Union, Callable, Any, _GenericAlias
+    Optional,
+    Mapping,
+    Literal,
+    Union,
+    Callable,
+    Any,
+    _GenericAlias,
 )
 
-from cytoolz import identity
-
 from dynamic import Dynamic, UnreadyError, AlreadyLoadedError
-from utilz import digsource, exc_report, pluck_from_execution, \
-    filter_assignment
+from utilz import (
+    digsource,
+    exc_report,
+    pluck_from_execution,
+    filter_assignment,
+)
 
 
 # TODO: async versions. maybe only needs to happen at implementation level,
@@ -28,17 +37,34 @@ class EvocationFailure(Exception):
     pass
 
 
+Performative = Literal[
+    "command",
+    "warning",
+    "request",
+    "advice",
+    "curse",
+    "permission",
+    "concession",
+    "wish",
+    "assertion",
+    "promise",
+    "threat",
+    "invitation",
+]
+
+
 class Irrealis(Dynamic, ABC):
     """
     simple class to help manage function evocation and implication
     """
+
     def __init__(
         self,
         description: Union[str, Mapping, FunctionType, None] = None,
         side: Literal["invocative", "evocative"] = "invocative",
         stance: Literal["explicit", "implicit"] = "explicit",
         optional: bool = False,
-        # performativity: Literal["imperative", "desiderative"] = "imperative"
+        performativity: Optional[Performative] = None,
         lazy: bool = True,
         auto_reimply: bool = False,
         globals_: Optional[dict] = None,
@@ -47,6 +73,8 @@ class Irrealis(Dynamic, ABC):
         self.description = description
         self.side = side
         self.stance = stance
+        # no default effect. may be used by implementations of this class
+        self.performativity = performativity
         self.api_settings = self.default_api_settings | api_kwargs
         self.auto_reimply = auto_reimply
         self.imply_fail = False
@@ -86,7 +114,7 @@ class Irrealis(Dynamic, ABC):
             if self.optional is False:
                 raise
         except Exception as ex:
-            self.errors.append(exc_report(ex) | {'category': 'imply'})
+            self.errors.append(exc_report(ex) | {"category": "imply"})
             if self.optional is False:
                 raise
         return super().load()
@@ -118,7 +146,7 @@ class Irrealis(Dynamic, ABC):
         return self.evoke(*args, _optional=_optional, **kwargs)
 
     default_api_settings: MappingProxyType
-    __name__ = '<unloaded Irrealis>'
+    __name__ = "<unloaded Irrealis>"
 
 
 # TODO: should this actually have a Dynamic-analogous base class that, like,
@@ -181,19 +209,19 @@ class Implication(ABC):
             # of self.imply
         except Exception as exc:
             exception = exc
-            self.errors.append(exc_report(exc) | {'category': 'imply'})
+            self.errors.append(exc_report(exc) | {"category": "imply"})
         if self.imply_fail is True:
             self._raise_if_nonoptional(ImplicationFailure(str(exception)))
             return False
         return self.evaluate()
 
     def evaluate(self, *args, globals_=None, **kwargs) -> bool:
-        kwargs['globals'] = globals_ if globals_ is not None else globals()
+        kwargs["globals"] = globals_ if globals_ is not None else globals()
         self.eval_fail = True
         try:
             # TODO, pass locals/globals in some nicer way
             if self.eval_mode == "literal":
-                self.obj = ast.literal_eval(filter_assignment(self.source))
+                self.obj = self.literalize(self.source)
             elif self.eval_mode == "eval":
                 self.obj = eval(self.source, *args, **kwargs)
             elif self.eval_mode == "exec":
@@ -203,7 +231,7 @@ class Implication(ABC):
         except KeyboardInterrupt:
             raise
         except Exception as exc:
-            self.errors.append(exc_report(exc) | {'category': 'evaluate'})
+            self.errors.append(exc_report(exc) | {"category": "evaluate"})
             self._raise_if_nonoptional(EvaluationError(str(exc)))
         return False
 
@@ -226,6 +254,7 @@ class Implication(ABC):
             return self._raise_if_nonoptional()
         self.obj.__getattr__(attr)
 
+    literalize: lambda a: ast.literal_eval(filter_assignment(a))
     default_api_settings: MappingProxyType
 
 
@@ -234,10 +263,9 @@ class Implication(ABC):
 # TODO: all the magic methods. not very useful right now.
 # noinspection PyProtectedMember
 class ImplicationWrapper:
-
     def __init__(self, *args, **kw):
         if "_constructor" in kw.keys():
-            self._constructor = kw.pop('_constructor')
+            self._constructor = kw.pop("_constructor")
         elif "_constructor" not in dir(self):
             raise TypeError(
                 "Must pass a _constructor kwarg to __init__ "
@@ -301,9 +329,7 @@ class ImplicationWrapper:
 
     _initialized = False
     _loaded = False
-    _constructor: Union[
-        Implication, Callable[[Any], Implication]
-    ]
+    _constructor: Union[Implication, Callable[[Any], Implication]]
     _private_attributes = (
         "_interior",
         "_initialized",
@@ -317,7 +343,7 @@ class ImplicationWrapper:
 
 
 def base_evoked(func: FunctionType, *args, irrealis: type[Irrealis], **kwargs):
-    return irrealis.from_function(func, *args, side='evocative', **kwargs)
+    return irrealis.from_function(func, *args, side="evocative", **kwargs)
 
 
 def base_implied(
@@ -326,7 +352,7 @@ def base_implied(
     irrealis: type[Irrealis],
     **kwargs
 ):
-    return irrealis(base, *args, stance='implicit', **kwargs)
+    return irrealis(base, *args, stance="implicit", **kwargs)
 
 
 def base_impliedobj(
@@ -340,6 +366,7 @@ def base_impliedobj(
     if lazy is True:
         return implication(base, implied_type, *args, lazy=True, **kwargs)
     return implication(base, implied_type, *args, lazy=False, **kwargs).obj
+
 
 """quasigraphs"""
 
@@ -380,4 +407,3 @@ stand in alliterative or repetitive relation. [...] It seems that the
 repeating sense of sounds tends to create a spell-binding quality. 
 (van Manen 2014)
 """
-

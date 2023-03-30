@@ -8,12 +8,10 @@ DEFAULT_SETTINGS = MappingProxyType(
     }
 )
 
-CHATGPT_NO = (
-    "Format your response as valid Python. Do not write explanations. "
-    "Do not provide examples."
-)
+CHATGPT_FORMAT = "Format your response as valid Python. "
+CHATGPT_NO = "Do not write explanations. Do not provide examples. "
 
-IEXEC_CHAT =(
+IEXEC_CHAT = (
     "Show me an example of what this function execution might return. "
 )
 
