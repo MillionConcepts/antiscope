@@ -52,11 +52,12 @@ from utilz import _strip_our_decorators, getdef, digsource, exc_report, \
 openai.api_key = OPENAI_API_KEY
 openai.organization = OPENAI_ORGANIZATION
 
+
 def format_type(type_):
     if isinstance(type_, type):
         return type_.__name__
     else:
-        return re.sub("(typing|types)\.", "", str(type_))
+        return re.sub(fr"(typing|types)\.", "", str(type_))
 
 
 # TODO: add more control over chat context
@@ -146,13 +147,11 @@ def wish_for_call(
     **kwargs,
 ):
     for_chat = _settings["model"] in CHAT_MODELS
-    prompt = construct_call_prompt(
-        _func, args, kwargs, for_chat, _settings.get("system")
-    )
+    prompt = construct_call_prompt(_func, args, kwargs, for_chat)
     return complete(prompt, _settings)
 
 
-def construct_call_prompt(_func, args, kwargs, for_chat=True, system=None):
+def construct_call_prompt(_func, args, kwargs, for_chat=True):
     callstring = format_calltext(_func, *args, **kwargs)
     source = _strip_our_decorators(digsource(_func))
     if for_chat is True:
