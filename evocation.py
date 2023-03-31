@@ -224,7 +224,7 @@ def evoke(
     _func: FunctionType,
     *args,
     _settings: Mapping = DEFAULT_SETTINGS,
-    _performativity: Literal[Performative],
+    _performativity: Literal[Performative] = 'wish',
     _extended: bool = False,
     _processing_pipeline: Mapping[str, Callable] = EVOCATION_PIPELINE,
     **kwargs,
