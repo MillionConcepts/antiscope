@@ -64,7 +64,7 @@ class Irrealis(Dynamic, ABC):
         side: Literal["invocative", "evocative"] = "invocative",
         stance: Literal["explicit", "implicit"] = "explicit",
         optional: bool = False,
-        performativity: Optional[Performative] = None,
+        performativity: Optional[Performative] = 'wish',
         lazy: bool = True,
         auto_reimply: bool = False,
         globals_: Optional[dict] = None,
