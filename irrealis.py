@@ -254,7 +254,10 @@ class Implication(ABC):
             return self._raise_if_nonoptional()
         self.obj.__getattr__(attr)
 
-    literalize: lambda a: ast.literal_eval(filter_assignment(a))
+    @staticmethod
+    def literalize(text):
+        return ast.literal_eval(filter_assignment(text))
+
     default_api_settings: MappingProxyType
 
 

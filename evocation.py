@@ -201,7 +201,9 @@ def literalizer(text: str):
             if i == 1:
                 return ast.literal_eval(text.strip(FALLBACK_STRIPPABLES))
             if i == 2:
-                lines = text.split("\n")
+                lines = tuple(
+                    filter(lambda l: 'print(' not in l, text.split("\n"))
+                )
                 lastline = lines[-1].strip(FALLBACK_STRIPPABLES)
                 return ast.literal_eval(lastline)
             if i == 3:
@@ -427,8 +429,11 @@ class OAImplication(Implication):
             }
         )
 
+    @staticmethod
+    def literalize(text):
+        return literalizer(text)
+
     default_api_settings = DEFAULT_SETTINGS
-    literalize = literalizer
 
 
 class OAImplicationWrapper(ImplicationWrapper):
