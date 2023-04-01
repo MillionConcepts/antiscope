@@ -79,12 +79,17 @@ def request_function_definition(
 ):
     if isinstance(base, FunctionType):
         return _request_redefinition(base, _settings)
-    parts = [f"Write a {language} function"]
+    parts = [
+        f"show me a possible example of a {language} function"
+    ]
     if name is not None:
         parts[0] += f" named {name}"
     if base is not None:
         parts[0] += f" that {base}"
-    parts[0] += ".\n"
+    parts[0] += (
+        ". If you have to import anything, put the import inside the "
+        "function definition.\n"
+    )
     if args_like is not None:
         if not isinstance(args_like, str):
             args_like = "\n".join(a.__repr__() for a in args_like)
