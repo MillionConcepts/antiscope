@@ -99,7 +99,7 @@ class Irrealis(Dynamic, ABC):
 
     def load(self, reload=False):
         if self.stance == "explicit":
-            return super().load()
+            return super().load(reload)
         if (self.source is not None) and (reload is False):
             raise AlreadyLoadedError
         self.imply_fail = True
@@ -117,7 +117,7 @@ class Irrealis(Dynamic, ABC):
             self.errors.append(exc_report(ex) | {"category": "imply"})
             if self.optional is False:
                 raise
-        return super().load()
+        return super().load(reload)
 
     @abstractmethod
     def evoke(self, *args, _optional=None, **kwargs):

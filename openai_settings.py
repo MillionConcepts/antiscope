@@ -16,8 +16,8 @@ IEXEC_CHAT = (
 )
 
 REDEF_CHAT = (
-    "Show me an example of what the body of this Python function "
-    "might contain. Print only the body of the function."
+    "Show me an example of what the the body of this Python function "
+    "might contain. "
 )
 
 CHAT_MODELS = ('gpt-3.5-turbo', 'gpt-4')

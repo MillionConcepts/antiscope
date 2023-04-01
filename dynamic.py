@@ -53,8 +53,8 @@ class Dynamic:
     def load(self, reload=False):
         if (reload is False) and (self.func is not None):
             raise AlreadyLoadedError("self.func already loaded")
-        self.compile_source()
-        self.define()
+        self.compile_source(reload)
+        self.define(reload)
 
     def compile_source(self, recompile=True):
         if (recompile is False) and (self.code is not None):
@@ -67,8 +67,8 @@ class Dynamic:
             self.errors.append(exc_report(ex) | {'category': 'compile'})
             self.compile_fail = True
 
-    def define(self):
-        if self.func is not None:
+    def define(self, redefine=False):
+        if (self.func is not None) and (redefine is not True):
             raise AlreadyLoadedError("self.func already defined")
         self.func = define(self.code, self.globals_)
         self.__signature__ = signature(self.func)
