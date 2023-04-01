@@ -1,5 +1,6 @@
 import ast
 from abc import ABC, abstractmethod
+from inspect import getouterframes, currentframe
 from types import MappingProxyType, FunctionType
 
 # noinspection PyUnresolvedReferences, PyProtectedMember
@@ -64,7 +65,7 @@ class Irrealis(Dynamic, ABC):
         side: Literal["invocative", "evocative"] = "invocative",
         stance: Literal["explicit", "implicit"] = "explicit",
         optional: bool = False,
-        performativity: Optional[Performative] = 'wish',
+        performativity: Optional[Performative] = "wish",
         lazy: bool = True,
         auto_reimply: bool = False,
         globals_: Optional[dict] = None,
@@ -95,6 +96,7 @@ class Irrealis(Dynamic, ABC):
             source = None
         else:
             raise TypeError("unknown description format.")
+        globals_ = globals_ if globals_ is not None else globals()
         super().__init__(source, globals_, optional, lazy)
 
     def load(self, reload=False):
@@ -355,7 +357,12 @@ def base_implied(
     irrealis: type[Irrealis],
     **kwargs
 ):
-    return irrealis(base, *args, stance="implicit", **kwargs)
+    globals_ = kwargs.get("globals_")
+    if globals_ is None:
+        globals_ = getouterframes(currentframe())[1][0].f_globals
+    return irrealis(
+        base, *args, stance="implicit", globals_=globals_, **kwargs
+    )
 
 
 def base_impliedobj(

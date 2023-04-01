@@ -61,7 +61,9 @@ def _call_openai_completion(prompt, _settings):
 
 
 def _call_openai_chat_completion(prompt, _settings):
-    if (messages := _settings.get("message_context")) is None:
+    if isinstance(prompt, list):
+        messages = prompt
+    elif (messages := _settings.get("message_context")) is None:
         messages = chatinit(prompt, _settings.get("system"))
     else:
         messages = addmsg(prompt, messages)
