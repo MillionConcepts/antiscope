@@ -287,7 +287,7 @@ def imply(
         return_like=return_like,
         _settings=_settings | api_kwargs
     )
-    return Dynamic(reconstruct_def(result, base))
+    return Dynamic(reconstruct_def(result, base), globals_=globals())
 
 
 class OAIrrealis(Irrealis):

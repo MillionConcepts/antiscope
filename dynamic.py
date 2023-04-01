@@ -120,6 +120,7 @@ class Dynamic:
         dynamic.func = func
         dynamic.__signature__ = signature(dynamic.func)
         dynamic.__name__ = dynamic.func.__name__
+        dynamic.globals_ = func.__globals__
         dynamic.__init__(*init_args, **init_kwargs)
         return dynamic
 
