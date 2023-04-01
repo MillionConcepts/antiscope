@@ -278,10 +278,14 @@ def imply(
     args_like: Any = None,
     return_like: Any = None,
     _settings: Mapping = DEFAULT_SETTINGS,
+    **api_kwargs
 ):
     """produce a function definition through implication"""
     result, prompt = request_function_definition(
-        base, args_like=args_like, return_like=return_like, _settings=_settings
+        base,
+        args_like=args_like,
+        return_like=return_like,
+        _settings=_settings | api_kwargs
     )
     return Dynamic(reconstruct_def(result, base))
 
