@@ -1,6 +1,12 @@
 # antiscope
 
-_antiscope - n. - If a microscope helps you see small things. And a telescope helps you see far things. What does an antiscope help you see?_
+_antiscope - n. - If a microscope helps you see small things, and a telescope helps you see distant things, what does an antiscope help you see?_
+
+### What is `antiscope`?
+
+Have you ever wanted to combine the best features of functional programming and Zen koans? antiscope is a Python-language library that provides structures for irrealis programming. Irrealis programming permits evaluation of code in which some objects are undefined or incompletely defined. The program will run as if those objects were well-defined. (You could say that these objects are in a subjunctive mood, or that they are counterfactual, or that they are defined using possible-worlds semantics.)
+
+For a more complete description, including many worked examples, please see the [introductory document here](https://millionconcepts.com/).
 
 ### API KEY
 
@@ -8,4 +14,4 @@ To use this repository, you will need an OpenAI API key and organization defined
 
 ### Warning! Achtung!
 
-Use of this repository might cost you money or sanity. We do not believe that the code in this repository is fit for any purpose. We recommend that you do not use it. We disclaim all responsibility for bad things that might happen if you use it anyway.
+Use of this repository might cost you money or sanity. It sometimes executes **untrusted code** _by design_. We do not believe that the code in this repository is fit for any purpose. We recommend that you do not use it. We disclaim all responsibility for bad things that might happen if you use it anyway.
