@@ -32,7 +32,9 @@ def getdef(func: Callable, get_docstring: bool = True) -> str:
      of dynamically-defined functions.
     """
     defstring = re.search(
-        r"def.*\) ?(-> ?[^\n:]*)?:", digsource(func), re.M + re.DOTALL
+        r"def.*?\) ?(-> ?(\w|[\[\]])*?[^\n:]*)?:",
+        digsource(func),
+        re.M + re.DOTALL
     ).group()
     if (func.__doc__ is None) or (get_docstring is False):
         return defstring
