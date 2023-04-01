@@ -346,6 +346,11 @@ class OAIrrealis(Irrealis):
     default_api_settings = DEFAULT_SETTINGS
 
 
+def tabtext(text, tabsize=4):
+    tab = " " * tabsize
+    return tab + re.sub("\n", f"\n{tab}", text)
+
+
 def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
     if "__name__" in dir(defstem):
         # functions and things like functions
@@ -364,6 +369,9 @@ def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
         # TODO: add docstring and stuff back.
         #  probably just extract the body first.
         return received
+    # TODO: crude
+    if not received.startswith("    "):
+        received = tabtext(received)
     return f"{defstem}\n{received}"
 
 
