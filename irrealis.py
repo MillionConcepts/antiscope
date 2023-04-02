@@ -217,17 +217,17 @@ class Implication(ABC):
             return False
         return self.evaluate()
 
-    def evaluate(self, *args, globals_=None, **kwargs) -> bool:
-        kwargs["globals"] = globals_ if globals_ is not None else globals()
+    def evaluate(self, *, globals_=None, **kwargs) -> bool:
+        globals_ = globals_ if globals_ is not None else globals()
         self.eval_fail = True
         try:
             # TODO, pass locals/globals in some nicer way
             if self.eval_mode == "literal":
                 self.obj = self.literalize(self.source)
             elif self.eval_mode == "eval":
-                self.obj = eval(self.source, *args, **kwargs)
+                self.obj = eval(self.source, globals_)
             elif self.eval_mode == "exec":
-                self.obj = pluck_from_execution(self.source, *args, **kwargs)
+                self.obj = pluck_from_execution(self.source, globals_)
             self.eval_fail = False
             return True
         except KeyboardInterrupt:

@@ -46,7 +46,7 @@ from openai_settings import (
 from openai_utils import (
     complete,
     getchoice,
-    strip_codeblock,
+    strip_codeblock, addmsg, addreply,
 )
 from utilz import (
     _strip_our_decorators,
@@ -343,6 +343,18 @@ class OAIrrealis(Irrealis):
             raise EvocationFailure(exc)
         return result
 
+    def tochat(self) -> list[dict]:
+        # TODO: deal with system?
+        messages = []
+        for entry in self.history:
+            if 'prompt' not in entry.keys():
+                continue
+            messages = addmsg(entry['prompt'], messages)
+            messages = addreply(
+                getchoice(entry['response'], raise_truncated=False), messages
+            )
+        return messages
+
     def log(self, prompt, response, category):
         self.history.append(
             {
@@ -408,7 +420,7 @@ def request_object_construction(
 
 
 def format_construction_prompt(base, implied_type, language="Python"):
-    prompt = f"{language} code that constructs an object "
+    prompt = f"Show me example {language} code that constructs an object "
     if implied_type is not None:
         prompt += f"of type {format_type(implied_type)} "
     if base is not None:

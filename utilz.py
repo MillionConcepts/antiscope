@@ -98,9 +98,9 @@ def filter_assignment(text):
     return text
 
 
-def pluck_from_execution(text, *ex_args, **ex_kw):
+def pluck_from_execution(text, globals_):
     _, _, varname = terminal_assignment_line(ast.parse(text).body)
-    exec(text, *ex_args, **ex_kw)
+    exec(text, globals_, locals())
     return locals()[varname]
 
 
