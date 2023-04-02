@@ -198,7 +198,7 @@ FALLBACK_STRIPPABLES = "".join(('"', "'", "`", "\n", " ", "."))
 
 
 # noinspection PyUnboundLocalVariable
-def literalizer(text: str):
+def literalizer(text: str, retry: bool = False):
     for i in range(5):
         try:
             if i == 0:
@@ -217,6 +217,8 @@ def literalizer(text: str):
                 return ast.literal_eval(re.sub(".*=", "", lastline))
         except (SyntaxError, ValueError) as exc:
             exception = exc
+    if retry is False:
+        return literalizer("\n".join(lines[1:]), retry=True)
     raise exception
 
 
