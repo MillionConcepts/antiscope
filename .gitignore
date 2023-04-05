@@ -137,3 +137,6 @@ api_secrets.py
 # scratch code
 *_scratch.py
 *_scratch.ipynb
+
+# model outputs
+outputs/

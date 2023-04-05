@@ -4,7 +4,7 @@ import datetime as dt
 import re
 import traceback
 from functools import wraps
-from inspect import getsource
+from inspect import getsource, getdoc, getcallargs
 from types import FunctionType, CodeType
 from typing import Callable, Optional, Sequence
 
@@ -112,3 +112,12 @@ def exc_report(exc):
         "exception": exc,
         "stack": tuple([a.name for a in traceback.extract_stack()[:-3]]),
     }
+
+
+def tabtext(text, tabsize=4):
+    tab = " " * tabsize
+    return tab + re.sub("\n", f"\n{tab}", text)
+
+
+def argformat_docstring(func: FunctionType, *args, **kwargs) -> str:
+    return getdoc(func).format(**getcallargs(func, *args, **kwargs))

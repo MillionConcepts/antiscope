@@ -4,9 +4,8 @@ reference implementation of irrealis-mood functionality w/the OpenAI API
 import ast
 import datetime as dt
 import re
-from inspect import getcallargs, getdoc, get_annotations
+from inspect import getcallargs, get_annotations
 from types import FunctionType, MappingProxyType
-
 # noinspection PyUnresolvedReferences, PyProtectedMember
 from typing import (
     Any,
@@ -46,18 +45,19 @@ from openai_settings import (
 from openai_utils import (
     complete,
     getchoice,
-    strip_codeblock, addmsg, addreply,
+    strip_codeblock, addmsg, addreply, get_usage, get_cost,
 )
 from utilz import (
     _strip_our_decorators,
     getdef,
     digsource,
     exc_report,
-    filter_assignment,
+    filter_assignment, tabtext, argformat_docstring,
 )
 
 openai.api_key = OPENAI_API_KEY
 openai.organization = OPENAI_ORGANIZATION
+FALLBACK_STRIPPABLES = "".join(('"', "'", "`", "\n", " ", "."))
 
 
 def format_type(type_):
@@ -102,6 +102,15 @@ def request_function_definition(
     if _settings["model"] in CHAT_MODELS:
         prompt += CHATGPT_NO
     return complete(prompt, _settings)
+
+
+def _eventrecord(prompt, response, category) -> dict[str]:
+    return {
+        "prompt": prompt,
+        "response": response,
+        "category": category,
+        "time": dt.datetime.now().isoformat()[:-3],
+    }
 
 
 def _request_redefinition(
@@ -175,10 +184,6 @@ def construct_call_prompt(_func, args, kwargs, for_chat=True):
     return prompt
 
 
-def argformat_docstring(func: FunctionType, *args, **kwargs) -> str:
-    return getdoc(func).format(**getcallargs(func, *args, **kwargs))
-
-
 def command_from_call(
     _func: FunctionType, *args, _settings: Mapping = DEFAULT_SETTINGS, **kwargs
 ):
@@ -192,9 +197,6 @@ def command_from_call(
         prompt += "\nDo not write explanations."
     response, _ = complete(prompt, _settings)
     return response, prompt, no_parse
-
-
-FALLBACK_STRIPPABLES = "".join(('"', "'", "`", "\n", " ", "."))
 
 
 # noinspection PyUnboundLocalVariable
@@ -227,8 +229,7 @@ EVOCATION_PIPELINE = MappingProxyType(
 )
 
 
-# TODO: this might actually be usable, at least in part,  as a more generic
-#  `evoke` pattern.
+# TODO: this might be usable in part as a more generic evoke pattern.
 def evoke(
     _func: FunctionType,
     *args,
@@ -310,7 +311,7 @@ class OAIrrealis(Irrealis):
                 res, prompt = request_function_definition(
                     self.description, _settings=_settings
                 )
-            self.log(prompt, res, "imply")
+            self._record_event(prompt, res, "imply")
             step = "extract_response"
             return reconstruct_def(res, base)
         except KeyboardInterrupt:
@@ -322,7 +323,11 @@ class OAIrrealis(Irrealis):
             raise ImplicationFailure(exc)
 
     def evoke(self, *args, _optional=None, **kwargs):
-        _optional = self.optional if _optional is None else _optional
+        if _optional is None:
+            if "dry_run" in self.api_settings:
+                _optional = True
+            else:
+                _optional = self.optional
         result, res, prompt, report, exc = evoke(
             self.func,
             *args,
@@ -331,7 +336,7 @@ class OAIrrealis(Irrealis):
             _settings=self.api_settings,
             **kwargs,
         )
-        self.log(prompt, res, "evoke")
+        self._record_event(prompt, res, "evoke")
         if exc is not None:
             self.evoke_fail = True
             self.errors.append(report)
@@ -355,23 +360,19 @@ class OAIrrealis(Irrealis):
             )
         return messages
 
-    def log(self, prompt, response, category):
-        self.history.append(
-            {
-                "prompt": prompt,
-                "response": response,
-                "category": category,
-                "time": dt.datetime.now().isoformat()[:-3],
-            }
-        )
+    @property
+    def usage(self):
+        return get_usage(self.history)
+
+    @property
+    def cost(self):
+        return get_cost(self.api_settings['model'], self.history)
+
+    def _record_event(self, prompt, response, category):
+        self.history.append(_eventrecord(prompt, response, category))
 
     performativity: Performative = "wish"
     default_api_settings = DEFAULT_SETTINGS
-
-
-def tabtext(text, tabsize=4):
-    tab = " " * tabsize
-    return tab + re.sub("\n", f"\n{tab}", text)
 
 
 def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):
@@ -439,7 +440,7 @@ class OAImplication(Implication):
                 self.implied_type,
                 _settings=self.api_settings,
             )
-            self.log(prompt, res, "imply")
+            self._record_event(prompt, res, "imply")
             step = "extract_response"
             return strip_codeblock(getchoice(res))
         except KeyboardInterrupt:
@@ -450,15 +451,16 @@ class OAImplication(Implication):
             )
             raise ImplicationFailure(exc)
 
-    def log(self, prompt, response, category):
-        self.history.append(
-            {
-                "prompt": prompt,
-                "response": response,
-                "category": category,
-                "time": dt.datetime.now().isoformat()[:-3],
-            }
-        )
+    def _record_event(self, prompt, response, category):
+        self.history.append(_eventrecord(prompt, response, category))
+
+    @property
+    def usage(self):
+        return get_usage(self.history)
+
+    @property
+    def cost(self):
+        return get_cost(self.api_settings['model'], self.history)
 
     @staticmethod
     def literalize(text):

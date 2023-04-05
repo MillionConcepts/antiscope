@@ -38,3 +38,14 @@ EP_KWARGS = {
     'chat-completions': compl_kwargs
 }
 
+# $ / 1000 tokens
+PRICING = {
+    'gpt-3.5-turbo':  {'prompt': 0.002, 'completion': 0.002},
+    # TODO: distinguish context size
+    'gpt-4': {'prompt': 0.03, 'completion': 0.06},
+    'ada': {'prompt': 0.0004, 'completion': 0.0004},
+    'babbage': {'prompt': 0.0005, 'completion': 0.0005},
+    'curie': {'prompt': 0.002, 'completion': 0.002},
+    # TODO, maybe: distinguish code etc., but they're deprecating
+    'davinci': {'prompt': 0.02, 'completion': 0.02}
+}

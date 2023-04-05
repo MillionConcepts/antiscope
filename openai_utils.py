@@ -1,11 +1,12 @@
 import datetime as dt
 import re
-from typing import Union
+from operator import xor
+from typing import Union, Mapping, Collection, Optional
 
 from cytoolz import keyfilter
 import openai
 
-from openai_settings import EP_KWARGS, CHAT_MODELS, DEFAULT_SETTINGS
+from openai_settings import EP_KWARGS, CHAT_MODELS, DEFAULT_SETTINGS, PRICING
 
 
 def _codestrippable(line):
@@ -67,10 +68,10 @@ def _call_openai_chat_completion(prompt, _settings):
         messages = chatinit(prompt, _settings.get("system"))
     else:
         messages = addmsg(prompt, messages)
-    response = openai.ChatCompletion.create(
-        messages=messages,
-        **keyfilter(lambda k: k in EP_KWARGS["chat-completions"], _settings),
-    )
+    kwargs = keyfilter(lambda k: k in EP_KWARGS["chat-completions"], _settings)
+    if _settings.get("dry_run") is True:
+        return MockCompletion(messages, **kwargs), messages
+    response = openai.ChatCompletion.create(messages=messages, **kwargs)
     return response, messages
 
 
@@ -102,11 +103,51 @@ def getchoice(openai_response, choice_ix=0, raise_truncated: bool = True):
     return choice["text"]
 
 
+def get_usage(history: Collection[Mapping]):
+    """sum tokens used in all OpenAI API events in 'history'"""
+    ptok, ctok = 0, 0
+    for event in history:
+        if 'response' in event.keys():
+            event = event['response']
+        if 'content' in event.keys():
+            event = event['content']
+        if 'usage' not in event.keys():
+            continue
+        ptok += event['usage']['prompt_tokens']
+        ctok += event['usage']['completion_tokens']
+    return {'prompt': ptok, 'completion': ctok, 'total': ptok + ctok}
+
+
+def get_cost(
+    model: str = DEFAULT_SETTINGS['model'],
+    history: Optional[Collection[Mapping]] = None,
+    usage: Optional[Mapping] = None,
+):
+    """
+    get price of API calls. currently lazily assumes that all calls were made
+    to the same model.
+    """
+    if not xor((usage is None), (history is None)):
+        raise TypeError("must pass exactly one of usage or history.")
+    price = next(
+        filter(lambda kv: model.startswith(kv[0]), PRICING.items())
+    )[1]
+    if history is not None:
+        usage = get_usage(history)
+    cost = {
+        # prices given in PRICING are per 1000 tokens
+        'prompt': usage['prompt'] * price['prompt'] / 1000,
+        'completion': usage['completion'] * price['completion'] / 1000
+    }
+    return cost | {'total': cost['prompt'] + cost['completion']}
+
+
 class Conversation:
     """
     implements simple UI for interactive chat completion.
     primarily intended for dev/testing.
     """
+
     def __init__(self, settings=DEFAULT_SETTINGS, **api_kwargs):
         if settings["model"] not in CHAT_MODELS:
             raise TypeError(
@@ -135,8 +176,16 @@ class Conversation:
     def undo(self):
         self.messages = self.messages[:-2]
         self.history.append(
-            {'event': 'undo', 'time': dt.datetime.now().isoformat()[:-3]}
+            {"event": "undo", "time": dt.datetime.now().isoformat()[:-3]}
         )
+
+    @property
+    def usage(self):
+        return get_usage(self.history)
+
+    @property
+    def cost(self):
+        return get_cost(self.settings['model'], self.history)
 
     def print_transcript(self, messages: Union[None, slice, int] = None):
         if messages is not None:
@@ -154,7 +203,7 @@ class Conversation:
     def say(self, message: str, **api_kwargs):
         messages = addmsg(message, self.messages)
         response, _ = complete(messages, self.settings | api_kwargs)
-        status = 'ok'
+        status = "ok"
         try:
             text = getchoice(response)
             term_msg = ""
@@ -165,14 +214,59 @@ class Conversation:
         self.messages = addreply(text, messages)
         self.history.append(
             {
-                'event': 'api response',
-                'content': response,
-                'time': dt.datetime.now().isoformat()[:-3],
-                'settings': self.settings | api_kwargs,
-                'status': status
+                "event": "api response",
+                "content": response,
+                "time": dt.datetime.now().isoformat()[:-3],
+                "settings": self.settings | api_kwargs,
+                "status": status,
             }
         )
         if self.printreplies is True:
             self.console.print(text + term_msg)
 
 
+class MockCompletion:
+    def __init__(self, messages, **settings):
+        if "model" not in settings.keys():
+            raise TypeError("completion must be initialized with a model.")
+        if settings["model"] not in CHAT_MODELS:
+            raise NotImplementedError(
+                "Mock completion only supported for chat."
+            )
+        self.openai_id = "chatcmpl-mock"
+        self.timestamp = dt.datetime.now().isoformat()[:-3]
+        self.messages = messages
+        self.settings = settings
+        self.rdict = {
+            # TODO: other items
+            "model": settings.get("model"),
+            "object": "chat.completion",
+            # TODO: tiktoken
+            "usage": {
+                "completion_tokens": 0,
+                "prompt_tokens": 0,
+                "total_tokens": 0,
+            },
+            "choices": [
+                {
+                    "finish_reason": "stop",
+                    "index": 0,
+                    "message": {
+                        "content": "[mock message]",
+                        "role": "assistant",
+                    },
+                }
+            ],
+        }
+
+    def __getitem__(self, key):
+        return self.rdict.__getitem__(key)
+
+    def __str__(self):
+        return (
+            "MockCompletion(\n" + str(self.messages) + ",\n"
+            + str(self.rdict) + "\n)"
+        )
+
+    def __repr__(self):
+        return self.__str__()
