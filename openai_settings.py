@@ -2,7 +2,7 @@ from types import MappingProxyType
 
 DEFAULT_SETTINGS = MappingProxyType(
     {
-        'max_tokens': 250,
+        'max_tokens': 500,
         'model': 'gpt-3.5-turbo',
         'system': 'You are an insightful and creative analysis engine.',
     }
