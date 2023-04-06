@@ -14,8 +14,8 @@ from typing import (
     _GenericAlias,
 )
 
-from dynamic import Dynamic, UnreadyError, AlreadyLoadedError
-from utilz import (
+from antiscope.dynamic import Dynamic, UnreadyError, AlreadyLoadedError
+from antiscope.utilz import (
     digsource,
     exc_report,
     pluck_from_execution,

@@ -2,7 +2,9 @@ from inspect import signature, Signature
 from types import FunctionType
 from typing import Optional
 
-from utilz import digsource, dontcare, compile_source, define, exc_report
+from antiscope.utilz import (
+    digsource, dontcare, compile_source, define, exc_report
+)
 
 
 # TODO: some kind of "FunctionLike" type

@@ -6,6 +6,7 @@ import datetime as dt
 import re
 from inspect import getcallargs, get_annotations
 from types import FunctionType, MappingProxyType
+
 # noinspection PyUnresolvedReferences, PyProtectedMember
 from typing import (
     Any,
@@ -18,12 +19,10 @@ from typing import (
     Literal,
 )
 
-import openai
 from cytoolz import curry
 
-from api_secrets import OPENAI_API_KEY, OPENAI_ORGANIZATION
-from dynamic import Dynamic
-from irrealis import (
+from antiscope.dynamic import Dynamic
+from antiscope.irrealis import (
     Irrealis,
     ImplicationFailure,
     EvocationFailure,
@@ -34,7 +33,7 @@ from irrealis import (
     base_impliedobj,
     Performative,
 )
-from openai_settings import (
+from antiscope.openai_settings import (
     CHAT_MODELS,
     DEFAULT_SETTINGS,
     CHATGPT_NO,
@@ -42,21 +41,25 @@ from openai_settings import (
     REDEF_CHAT,
     CHATGPT_FORMAT,
 )
-from openai_utils import (
+from antiscope.openai_utils import (
     complete,
     getchoice,
-    strip_codeblock, addmsg, addreply, get_usage, get_cost,
+    strip_codeblock,
+    addmsg,
+    addreply,
+    get_usage,
+    get_cost,
 )
-from utilz import (
+from antiscope.utilz import (
     _strip_our_decorators,
     getdef,
     digsource,
     exc_report,
-    filter_assignment, tabtext, argformat_docstring,
+    filter_assignment,
+    tabtext,
+    argformat_docstring,
 )
 
-openai.api_key = OPENAI_API_KEY
-openai.organization = OPENAI_ORGANIZATION
 FALLBACK_STRIPPABLES = "".join(('"', "'", "`", "\n", " ", "."))
 
 
@@ -79,9 +82,7 @@ def request_function_definition(
 ):
     if isinstance(base, FunctionType):
         return _request_redefinition(base, _settings)
-    parts = [
-        f"show me a possible example of a {language} function"
-    ]
+    parts = [f"show me a possible example of a {language} function"]
     if name is not None:
         parts[0] += f" named {name}"
     if base is not None:
@@ -209,7 +210,7 @@ def literalizer(text: str, retry: bool = False):
                 return ast.literal_eval(text.strip(FALLBACK_STRIPPABLES))
             if i == 2:
                 lines = tuple(
-                    filter(lambda l: 'print(' not in l, text.split("\n"))
+                    filter(lambda l: "print(" not in l, text.split("\n"))
                 )
                 lastline = lines[-1].strip(FALLBACK_STRIPPABLES)
                 return ast.literal_eval(lastline)
@@ -234,7 +235,7 @@ def evoke(
     _func: FunctionType,
     *args,
     _settings: Mapping = DEFAULT_SETTINGS,
-    _performativity: Literal[Performative] = 'wish',
+    _performativity: Literal[Performative] = "wish",
     _extended: bool = False,
     _processing_pipeline: Mapping[str, Callable] = EVOCATION_PIPELINE,
     **kwargs,
@@ -281,14 +282,14 @@ def imply(
     args_like: Any = None,
     return_like: Any = None,
     _settings: Mapping = DEFAULT_SETTINGS,
-    **api_kwargs
+    **api_kwargs,
 ):
     """produce a function definition through implication"""
     result, prompt = request_function_definition(
         base,
         args_like=args_like,
         return_like=return_like,
-        _settings=_settings | api_kwargs
+        _settings=_settings | api_kwargs,
     )
     return Dynamic(reconstruct_def(result, base), globals_=globals())
 
@@ -352,11 +353,11 @@ class OAIrrealis(Irrealis):
         # TODO: deal with system?
         messages = []
         for entry in self.history:
-            if 'prompt' not in entry.keys():
+            if "prompt" not in entry.keys():
                 continue
-            messages = addmsg(entry['prompt'], messages)
+            messages = addmsg(entry["prompt"], messages)
             messages = addreply(
-                getchoice(entry['response'], raise_truncated=False), messages
+                getchoice(entry["response"], raise_truncated=False), messages
             )
         return messages
 
@@ -366,7 +367,7 @@ class OAIrrealis(Irrealis):
 
     @property
     def cost(self):
-        return get_cost(self.api_settings['model'], self.history)
+        return get_cost(self.api_settings["model"], self.history)
 
     def _record_event(self, prompt, response, category):
         self.history.append(_eventrecord(prompt, response, category))
@@ -460,7 +461,7 @@ class OAImplication(Implication):
 
     @property
     def cost(self):
-        return get_cost(self.api_settings['model'], self.history)
+        return get_cost(self.api_settings["model"], self.history)
 
     @staticmethod
     def literalize(text):

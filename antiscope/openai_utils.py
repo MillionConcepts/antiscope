@@ -6,7 +6,10 @@ from typing import Union, Mapping, Collection, Optional
 from cytoolz import keyfilter
 import openai
 
-from openai_settings import EP_KWARGS, CHAT_MODELS, DEFAULT_SETTINGS, PRICING
+from antiscope.openai_settings import (
+    EP_KWARGS, CHAT_MODELS, DEFAULT_SETTINGS, PRICING, set_up_secrets
+)
+set_up_secrets()
 
 
 def _codestrippable(line):
