@@ -182,6 +182,9 @@ class Conversation:
             {"event": "undo", "time": dt.datetime.now().isoformat()[:-3]}
         )
 
+    def reset(self):
+        self.messages = chatinit(system=self.settings['system'])
+
     @property
     def usage(self):
         return get_usage(self.history)
@@ -226,6 +229,23 @@ class Conversation:
         )
         if self.printreplies is True:
             self.console.print(text + term_msg)
+
+    def gettemp(self):
+        return self.settings['temperature']
+
+    def settemp(self, temperature):
+        self.settings['temperature'] = temperature
+
+    def gettok(self):
+        return self.settings['max_tokens']
+
+    def settok(self, tokens):
+        self.settings['max_tokens'] = tokens
+
+    temperature = property(gettemp, settemp)
+    temp = property(gettemp, settemp)
+    max_tokens = property(gettok, settok)
+
 
 
 class MockCompletion:
