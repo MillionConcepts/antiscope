@@ -66,6 +66,7 @@ compl_kwargs = (
     "top_p",
     "logprobs",
     "stop",
+    "logit_bias"
 )
 
 EP_KWARGS = {"completions": compl_kwargs, "chat-completions": compl_kwargs}

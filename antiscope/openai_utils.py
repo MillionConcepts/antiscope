@@ -87,7 +87,7 @@ def complete(to_complete: Union[list[dict], str], _settings):
     return _call_openai_completion(to_complete, _settings)
 
 
-def chatinit(prompt=None, system=None):
+def chatinit(prompt=None, system=None) -> list[dict[str, str]]:
     messages = []
     for msg, role in zip((system, prompt), ("system", "user")):
         if msg is not None:
@@ -157,9 +157,9 @@ class Conversation:
                 f'{settings["model"]} does not support chat completions.'
             )
         self.settings = settings | api_kwargs
-        self.messages = chatinit(system=settings["system"])
+        self.messages = chatinit(system=settings.get('system'))
+        self.transcript = self.messages
         self.history = []
-        self.printreplies = True
         from rich.console import Console
 
         self.console = Console(width=66)
@@ -171,19 +171,25 @@ class Conversation:
         self.messages = addreply(msg, self.messages)
 
     def printon(self):
-        self.printreplies = True
+        self.verbose = True
 
     def printoff(self):
-        self.printreplies = False
+        self.verbose = False
 
     def undo(self):
         self.messages = self.messages[:-2]
         self.history.append(
             {"event": "undo", "time": dt.datetime.now().isoformat()[:-3]}
         )
+        self.transcript.append(
+            {'role': 'program', 'content': 'last action undone.'}
+        )
 
     def reset(self):
-        self.messages = chatinit(system=self.settings['system'])
+        self.messages = chatinit(system=self.settings.get('system'))
+        self.transcript.append(
+            {'role': 'program', 'content': 'conversation reset.'}
+        )
 
     @property
     def usage(self):
@@ -193,17 +199,15 @@ class Conversation:
     def cost(self):
         return get_cost(self.settings['model'], self.history)
 
-    def print_transcript(self, messages: Union[None, slice, int] = None):
-        if messages is not None:
-            active_messages = self.messages[messages]
-        else:
-            active_messages = self.messages
+    def print_transcript(self, which='transcript'):
+        to_print = self.transcript if which == 'transcript' else self.messages
         text = ""
-        for msg in active_messages:
-            text += (
-                f"[bold]### {msg['role'].upper()}:"
-                f"[/bold]\n{msg['content']}\n\n"
-            )
+        for msg in to_print:
+            text += f"[bold]### {msg['role'].upper()}:[/bold]\n"
+            if msg['role'] == 'program':
+                text += f"[italic]{msg['content']}[/italic]\n\n"
+            else:
+                text += f"{msg['content']}\n\n"
         self.console.print(text)
 
     def say(self, message: str, **api_kwargs):
@@ -211,13 +215,13 @@ class Conversation:
         response, _ = complete(messages, self.settings | api_kwargs)
         status = "ok"
         try:
-            text = getchoice(response)
+            reply = getchoice(response)
             term_msg = ""
         except IOError as ioe:
             status = str(ioe)
-            text = getchoice(response, raise_truncated=False)
+            reply = getchoice(response, raise_truncated=False)
             term_msg = f"[dark_orange bold]\n\n{str(ioe)}"
-        self.messages = addreply(text, messages)
+        self.messages = addreply(reply, messages)
         self.history.append(
             {
                 "event": "api response",
@@ -227,8 +231,13 @@ class Conversation:
                 "status": status,
             }
         )
-        if self.printreplies is True:
-            self.console.print(text + term_msg)
+        self.transcript = addmsg(message, self.transcript)
+        self.transcript = addreply(reply, self.transcript)
+        self._maybe_print(reply + term_msg)
+
+    def _maybe_print(self, msg):
+        if self.verbose is True:
+            self.console.print(msg)
 
     def gettemp(self):
         return self.settings['temperature']
@@ -242,10 +251,10 @@ class Conversation:
     def settok(self, tokens):
         self.settings['max_tokens'] = tokens
 
+    verbose = True
     temperature = property(gettemp, settemp)
     temp = property(gettemp, settemp)
     max_tokens = property(gettok, settok)
-
 
 
 class MockCompletion:
