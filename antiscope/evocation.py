@@ -383,7 +383,12 @@ class OAIrrealis(Irrealis):
 
     def __call__(self, *args, _optional=None, **kwargs):
         if self.side == "evocative":
-            self.csource = capture_call()
+            try:
+                self.csource = capture_call()
+            # TODO: maybe log this somewhere, but it's fundamentally a fuzzy
+            #  heuristic catch step, so...
+            except (ValueError, SyntaxError):
+                pass
         return super().__call__(*args, _optional=_optional, **kwargs)
 
     performativity: Performative = "wish"

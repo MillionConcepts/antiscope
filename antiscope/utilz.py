@@ -134,6 +134,10 @@ def get_call_source(frame: FrameType, maxlines: int = 25) -> tuple[str, str]:
     return call_line, "".join(context)
 
 
+def subquote(text):
+    return re.sub("'", '"', text)
+
+
 def parse_call_from_source(call_line: str, context: str) -> str:
     callmatch = re.search(r"(\w|_|\d)+?(?=\()", call_line)
     if callmatch is None:
@@ -148,7 +152,10 @@ def parse_call_from_source(call_line: str, context: str) -> str:
         unparsed = ast.unparse(obj)
         if not unparsed.startswith(callable_varname):
             continue
-        if call_line[callmatch.span()[0]:].strip() not in unparsed:
+        if (
+            subquote(call_line[callmatch.span()[0]:].strip())
+            not in subquote(unparsed)
+        ):
             continue
         callsource = unparsed
         break
