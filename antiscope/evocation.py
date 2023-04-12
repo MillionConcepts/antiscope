@@ -20,6 +20,7 @@ from typing import (
 )
 
 from cytoolz import curry
+from tiktoken import encoding_for_model
 
 from antiscope.dynamic import Dynamic
 from antiscope.irrealis import (
@@ -57,7 +58,7 @@ from antiscope.utilz import (
     exc_report,
     filter_assignment,
     tabtext,
-    argformat_docstring,
+    argformat_docstring, capture_call,
 )
 
 FALLBACK_STRIPPABLES = "".join(('"', "'", "`", "\n", " ", "."))
@@ -166,16 +167,22 @@ def wish_for_call(
     _func: FunctionType,
     *args,
     _settings=DEFAULT_SETTINGS,
+    _csource=None,
     **kwargs,
 ):
     for_chat = _settings["model"] in CHAT_MODELS
-    prompt = construct_call_prompt(_func, args, kwargs, for_chat)
+    callstring = format_calltext(_func, *args, **kwargs)
+    if _csource is not None:
+        # TODO: dumb magic number, misses lots of context, etc., etc.
+        tokens = encoding_for_model(_settings['model']).encode(callstring)
+        if len(tokens) > _settings['max_tokens'] * 0.8:
+            callstring = _csource
+    prompt = _finalize_calltext(_func, callstring, for_chat)
     return complete(prompt, _settings)
 
 
-def construct_call_prompt(_func, args, kwargs, for_chat=True):
-    callstring = format_calltext(_func, *args, **kwargs)
-    source = _strip_our_decorators(digsource(_func))
+def _finalize_calltext(func, callstring, for_chat):
+    source = _strip_our_decorators(digsource(func))
     if for_chat is True:
         prefix = IEXEC_CHAT + CHATGPT_FORMAT + CHATGPT_NO + "\n###\n"
         prompt = f"{prefix}\n{source}\n{callstring}\n"
@@ -238,13 +245,14 @@ def evoke(
     _performativity: Literal[Performative] = "wish",
     _extended: bool = False,
     _processing_pipeline: Mapping[str, Callable] = EVOCATION_PIPELINE,
+    _csource: Optional[str] = None,
     **kwargs,
 ):
     """evoke a function, producing a possible result of its execution"""
     no_parse = False
     if _performativity == "wish":
         response, prompt = wish_for_call(
-            _func, *args, _settings=_settings, **kwargs
+            _func, *args, _settings=_settings, _csource=_csource, **kwargs
         )
     elif _performativity == "command":
         response, prompt, no_parse = command_from_call(
@@ -335,6 +343,7 @@ class OAIrrealis(Irrealis):
             _extended=True,
             _performativity=self.performativity,
             _settings=self.api_settings,
+            _csource=self.csource,
             **kwargs,
         )
         self._record_event(prompt, res, "evoke")
@@ -372,8 +381,14 @@ class OAIrrealis(Irrealis):
     def _record_event(self, prompt, response, category):
         self.history.append(_eventrecord(prompt, response, category))
 
+    def __call__(self, *args, _optional=None, **kwargs):
+        if self.side == "evocative":
+            self.csource = capture_call()
+        return super().__call__(*args, _optional=_optional, **kwargs)
+
     performativity: Performative = "wish"
     default_api_settings = DEFAULT_SETTINGS
+    csource = None
 
 
 def reconstruct_def(response, defstem, choice_ix=0, raise_truncated=True):

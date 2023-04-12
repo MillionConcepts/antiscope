@@ -39,7 +39,7 @@ DEFAULT_SETTINGS = MappingProxyType(
         "max_tokens": 500,
         "model": "gpt-3.5-turbo",
         "system": "You are an insightful and creative analysis engine.",
-        "temperature": 0
+        "temperature": 0,
     }
 )
 

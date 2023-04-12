@@ -4,8 +4,8 @@ import datetime as dt
 import re
 import traceback
 from functools import wraps
-from inspect import getsource, getdoc, getcallargs
-from types import FunctionType, CodeType
+from inspect import getsource, getdoc, getcallargs, currentframe, getframeinfo
+from types import FunctionType, CodeType, FrameType
 from typing import Callable, Optional, Sequence
 
 from cytoolz import nth
@@ -121,3 +121,37 @@ def tabtext(text, tabsize=4):
 
 def argformat_docstring(func: FunctionType, *args, **kwargs) -> str:
     return getdoc(func).format(**getcallargs(func, *args, **kwargs))
+
+
+def capture_call() -> str:
+    return parse_call_from_source(*get_call_source(currentframe().f_back))
+
+
+def get_call_source(frame: FrameType, maxlines: int = 25) -> tuple[str, str]:
+    caller = frame.f_back
+    call_line = getframeinfo(caller).code_context[0]
+    context = getframeinfo(caller, maxlines).code_context
+    return call_line, "".join(context)
+
+
+def parse_call_from_source(call_line: str, context: str) -> str:
+    callmatch = re.search(r"(\w|_|\d)+?(?=\()", call_line)
+    if callmatch is None:
+        raise ValueError("Couldn't find callable variable name in source.")
+    callable_varname = callmatch.group()
+    parsed = ast.parse("".join(context))
+    callsource = None
+    for obj in ast.walk(parsed):
+        if not isinstance(obj, ast.Call):
+            continue
+        # noinspection PyTypeChecker
+        unparsed = ast.unparse(obj)
+        if not unparsed.startswith(callable_varname):
+            continue
+        if call_line[callmatch.span()[0]:].strip() not in unparsed:
+            continue
+        callsource = unparsed
+        break
+    if callsource is None:
+        raise ValueError("Couldn't find function call in source.")
+    return callsource
