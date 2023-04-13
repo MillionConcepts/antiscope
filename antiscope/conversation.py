@@ -12,10 +12,16 @@ from antiscope.openai_utils import (
     getchoice,
 )
 from rich.errors import MarkupError
+import rich.markup
 
 
 def striptags(text):
-    return re.sub(r"\[.*?]", "", text)
+    stripon, stripped = False, []
+    for position, text, tag in rich.markup._parse(text):
+        if tag is None:
+            stripped.append(text)
+    return "".join(stripped)
+
 
 
 class Conversation:
