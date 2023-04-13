@@ -35,7 +35,7 @@ class Conversation:
         self.history = []
         from rich.console import Console
 
-        self.console = Console(width=66)
+        self.console = Console(width=68)
 
     def addmsg(self, msg):
         self.messages = addmsg(msg, self.messages)
@@ -53,6 +53,9 @@ class Conversation:
         self.verbose = False
 
     def print(self, msg):
+        self.print_history.append(msg)
+        if self.verbose is False:
+            return
         try:
             self.console.print(msg)
         except MarkupError:
