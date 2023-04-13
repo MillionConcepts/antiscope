@@ -32,7 +32,7 @@ class Conversation:
         self.settings = settings | api_kwargs
         self.messages = chatinit(system=settings.get("system"))
         self.transcript = self.messages
-        self.history = []
+        self.history, self.print_history = [], []
         from rich.console import Console
 
         self.console = Console(width=68)
