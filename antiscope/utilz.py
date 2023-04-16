@@ -66,6 +66,8 @@ def dontcare(func, target=None):
         except KeyboardInterrupt:
             raise
         except Exception as e:
+            if target is None:
+                return
             target.append(exc_report(e) | {"func": func, 'category': 'call'})
 
     return carelessly
