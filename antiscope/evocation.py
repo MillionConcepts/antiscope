@@ -214,16 +214,18 @@ def literalizer(text: str, retry: bool = False):
             if i == 0:
                 return ast.literal_eval(text)
             if i == 1:
-                return ast.literal_eval(text.strip(FALLBACK_STRIPPABLES))
+                return ast.literal_eval(filter_assignment(text))
             if i == 2:
+                return ast.literal_eval(text.strip(FALLBACK_STRIPPABLES))
+            if i == 3:
                 lines = tuple(
                     filter(lambda l: "print(" not in l, text.split("\n"))
                 )
                 lastline = lines[-1].strip(FALLBACK_STRIPPABLES)
                 return ast.literal_eval(lastline)
-            if i == 3:
-                return ast.literal_eval(filter_assignment(lastline))
             if i == 4:
+                return ast.literal_eval(filter_assignment(lastline))
+            if i == 5:
                 return ast.literal_eval(re.sub(".*=", "", lastline))
         except (SyntaxError, ValueError) as exc:
             exception = exc
