@@ -110,7 +110,7 @@ class Conversation:
         try:
             reply = getchoice(response)
             term_msg = ""
-        except IOError as ioe:
+        except (IOError, ServiceUnavailableError) as ioe:
             status = str(ioe)
             reply = getchoice(response, raise_truncated=False)
             term_msg = f"[dark_orange bold]\n\n{str(ioe)}"
