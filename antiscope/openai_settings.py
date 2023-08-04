@@ -49,10 +49,13 @@ CHATGPT_NO = "Do not write explanations. Do not provide examples. "
 IEXEC_CHAT = (
     "Show me an example of what this function execution might return. "
 )
-
 REDEF_CHAT = (
     "Show me an example of what the the body of this Python function "
     "might contain. "
+)
+REVERSE_CHAT = (
+    'Rewrite this function so that every boolean operation has the opposite '
+    'result.'
 )
 
 CHAT_MODELS = ("gpt-3.5-turbo", "gpt-4")

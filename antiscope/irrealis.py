@@ -51,6 +51,7 @@ Performative = Literal[
     "promise",
     "threat",
     "invitation",
+    "deny"
 ]
 
 

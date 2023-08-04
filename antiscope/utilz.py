@@ -10,7 +10,7 @@ from typing import Callable, Optional, Sequence
 
 from cytoolz import nth
 
-EXPECTED_DECORATORS = ("@evoked", "@implied", "@cache")
+EXPECTED_DECORATORS = ("@evoked", "@implied", "@denied", "@cache")
 
 
 def _strip_our_decorators(defstring: str) -> str:

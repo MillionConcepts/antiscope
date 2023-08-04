@@ -40,7 +40,7 @@ from antiscope.openai_settings import (
     CHATGPT_NO,
     IEXEC_CHAT,
     REDEF_CHAT,
-    CHATGPT_FORMAT,
+    CHATGPT_FORMAT, REVERSE_CHAT,
 )
 from antiscope.openai_utils import (
     complete,
@@ -72,17 +72,18 @@ def format_type(type_):
 
 
 # TODO: add more control over chat context
-def request_function_definition(
-    base: Union[str, FunctionType, None],
-    name: Optional[str] = None,
-    args_like: Optional[Sequence[Any]] = None,
-    return_like: Optional[Sequence[Any]] = None,
-    *,
-    language: str = "Python",
-    _settings: Mapping = DEFAULT_SETTINGS,
+def _redefinition_request(
+    func: FunctionType, _settings: Mapping = DEFAULT_SETTINGS
 ):
-    if isinstance(base, FunctionType):
-        return _request_redefinition(base, _settings)
+    prompt = _strip_our_decorators(getdef(func))
+    if _settings["model"] in CHAT_MODELS:
+        return f"{REDEF_CHAT + CHATGPT_FORMAT + CHATGPT_NO}:\n{prompt}"
+    return f"# use this function:\n{prompt}"
+
+
+def _definition_request(
+    _settings, args_like, base, language, name, return_like
+):
     parts = [f"show me a possible example of a {language} function"]
     if name is not None:
         parts[0] += f" named {name}"
@@ -103,6 +104,42 @@ def request_function_definition(
     prompt = "".join(parts)
     if _settings["model"] in CHAT_MODELS:
         prompt += CHATGPT_NO
+    return prompt
+
+
+def _reverse_request(
+    func: FunctionType, _settings: Mapping = DEFAULT_SETTINGS
+):
+    prompt = _strip_our_decorators(digsource(func))
+    if _settings["model"] in CHAT_MODELS:
+        return f"{REVERSE_CHAT + CHATGPT_FORMAT + CHATGPT_NO}:\n{prompt}"
+    raise NotImplementedError
+
+
+def request_function_definition(
+    base: Union[str, FunctionType, None],
+    name: Optional[str] = None,
+    args_like: Optional[Sequence[Any]] = None,
+    return_like: Optional[Sequence[Any]] = None,
+    *,
+    language: str = "Python",
+    performativity: Performative = "wish",
+    _settings: Mapping = DEFAULT_SETTINGS,
+):
+    if isinstance(base, FunctionType):
+        if performativity in ("wish", "command"):
+            func = _redefinition_request
+        elif performativity == "deny":
+            func = _reverse_request
+        else:
+            raise NotImplementedError
+        prompt = func(base, _settings)
+    elif performativity == "deny":
+        raise NotImplementedError
+    else:
+        prompt = _definition_request(
+            _settings, args_like, base, language, name, return_like
+        )
     return complete(prompt, _settings)
 
 
@@ -113,17 +150,6 @@ def _eventrecord(prompt, response, category) -> dict[str]:
         "category": category,
         "time": dt.datetime.now().isoformat()[:-3],
     }
-
-
-def _request_redefinition(
-    func: FunctionType, _settings: Mapping = DEFAULT_SETTINGS
-):
-    prompt = getdef(func)
-    if _settings["model"] in CHAT_MODELS:
-        prompt = f"{REDEF_CHAT + CHATGPT_FORMAT + CHATGPT_NO}:\n{prompt}"
-    else:
-        prompt = "# use this function:\n" + prompt
-    return complete(prompt, _settings)
 
 
 def format_calltext(func, *args, **kwargs):
@@ -163,24 +189,6 @@ def format_calltext(func, *args, **kwargs):
     return callstring
 
 
-def wish_for_call(
-    _func: FunctionType,
-    *args,
-    _settings=DEFAULT_SETTINGS,
-    _csource=None,
-    **kwargs,
-):
-    for_chat = _settings["model"] in CHAT_MODELS
-    callstring = format_calltext(_func, *args, **kwargs)
-    if _csource is not None:
-        # TODO: dumb magic number, misses lots of context, etc., etc.
-        tokens = encoding_for_model(_settings['model']).encode(callstring)
-        if len(tokens) > _settings['max_tokens'] * 0.8:
-            callstring = _csource
-    prompt = _finalize_calltext(_func, callstring, for_chat)
-    return complete(prompt, _settings)
-
-
 def _finalize_calltext(func, callstring, for_chat):
     source = _strip_our_decorators(digsource(func))
     if for_chat is True:
@@ -205,6 +213,24 @@ def command_from_call(
         prompt += "\nDo not write explanations."
     response, _ = complete(prompt, _settings)
     return response, prompt, no_parse
+
+
+def wish_for_call(
+    _func: FunctionType,
+    *args,
+    _settings=DEFAULT_SETTINGS,
+    _csource=None,
+    **kwargs,
+):
+    for_chat = _settings["model"] in CHAT_MODELS
+    callstring = format_calltext(_func, *args, **kwargs)
+    if _csource is not None:
+        # TODO: dumb magic number, misses lots of context, etc., etc.
+        tokens = encoding_for_model(_settings['model']).encode(callstring)
+        if len(tokens) > _settings['max_tokens'] * 0.8:
+            callstring = _csource
+    prompt = _finalize_calltext(_func, callstring, for_chat)
+    return complete(prompt, _settings)
 
 
 # noinspection PyUnboundLocalVariable
@@ -312,15 +338,20 @@ class OAIrrealis(Irrealis):
             _settings = _settings | _sideload_settings
         try:
             step = "api_call"
+            # TODO: what is going on with the typing here?
             if isinstance(self.description, Mapping):
                 base = self.description["base"]
                 res, prompt = request_function_definition(
-                    _settings=_settings, **self.description
+                    _settings=_settings,
+                    performativity=self.performativity,
+                    **self.description
                 )
             else:
                 base = self.description
                 res, prompt = request_function_definition(
-                    self.description, _settings=_settings
+                    self.description,
+                    _settings=_settings,
+                    performativity=self.performativity,
                 )
             self._record_event(prompt, res, "imply")
             step = "extract_response"
@@ -496,6 +527,7 @@ class OAImplicationWrapper(ImplicationWrapper):
     _constructor = OAImplication
 
 
+denied = curry(base_implied, irrealis=OAIrrealis, performativity="deny")
 evoked = curry(base_evoked, irrealis=OAIrrealis)
 implied = curry(base_implied, irrealis=OAIrrealis)
 commanded = curry(base_evoked, irrealis=OAIrrealis, performativity="command")
