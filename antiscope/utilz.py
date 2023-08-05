@@ -46,6 +46,8 @@ def digsource(obj: Callable):
     wrapper for inspect.getsource that attempts to work on objects like
     Dynamic, functools.partial, etc.
     """
+    if "source" in dir(obj):
+        return obj.source
     if isinstance(obj, FunctionType):
         return getsource(obj)
     if "func" in dir(obj):
