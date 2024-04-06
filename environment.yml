@@ -2,8 +2,9 @@ name: antiscope
 channels:
   - conda-forge
 dependencies:
-  - python=3.11
-  - openai
+  - python >= 3.11
   - cytoolz
   - ipython
+  - openai >= 1.0.0
   - rich
+  - tiktoken
