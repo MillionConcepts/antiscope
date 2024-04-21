@@ -113,13 +113,13 @@ def get_usage(history: Collection[Mapping]):
     ptok, ctok = 0, 0
     for event in history:
         if 'response' in event.keys():
-            event = event.response
-        if 'content' in event.keys():
+            event = event['response']
+        elif 'content' in event.keys():
             event = event['content']
-        if 'usage' not in event.keys():
+        if not hasattr(event, 'usage'):
             continue
-        ptok += event['usage']['prompt_tokens']
-        ctok += event['usage']['completion_tokens']
+        ptok += event.usage.prompt_tokens
+        ctok += event.usage.completion_tokens
     return {'prompt': ptok, 'completion': ctok, 'total': ptok + ctok}
 
 
