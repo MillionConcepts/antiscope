@@ -7,3 +7,4 @@ dependencies:
   - cytoolz
   - ipython
   - rich
+  - tiktoken
