@@ -4,13 +4,14 @@ from operator import xor
 from typing import Union, Mapping, Collection, Optional
 
 from cytoolz import keyfilter
-import openai
+from openai import OpenAI
 
 from antiscope.openai_settings import (
-    EP_KWARGS, CHAT_MODELS, DEFAULT_SETTINGS, PRICING, set_up_secrets
+    EP_KWARGS, CHAT_MODELS, DEFAULT_SETTINGS, PRICING, get_secrets
 )
 
-set_up_secrets()
+
+client = OpenAI(**get_secrets())
 
 
 def _codestrippable(line):
@@ -58,10 +59,8 @@ def addmsg(msg, hist):
 def _call_openai_completion(prompt, _settings):
     if isinstance(prompt, (list, tuple)):
         prompt = "\n".join(prompt)
-    response = openai.Completion.create(
-        prompt=prompt,
-        **keyfilter(lambda k: k in EP_KWARGS["completions"], _settings),
-    )
+    response = client.completions.create(prompt=prompt,
+    **keyfilter(lambda k: k in EP_KWARGS["completions"], _settings))
     return response, prompt
 
 
@@ -77,7 +76,7 @@ def _call_openai_chat_completion(prompt, _settings):
     kwargs = keyfilter(lambda k: k in EP_KWARGS["chat-completions"], _settings)
     if _settings.get("dry_run") is True:
         return MockCompletion(messages, **kwargs), messages
-    response = openai.ChatCompletion.create(messages=messages, **kwargs)
+    response = client.chat.completions.create(messages=messages, **kwargs)
     return response, messages
 
 
@@ -100,13 +99,13 @@ def chatinit(prompt=None, system=None) -> list[dict[str, str]]:
 
 def getchoice(openai_response, choice_ix=0, raise_truncated: bool = True):
     if raise_truncated is True:
-        fr = openai_response["choices"][choice_ix]["finish_reason"]
+        fr = openai_response.choices[choice_ix].finish_reason
         if fr != "stop":
             raise IOError(f"Response did not terminate successfully: {fr}")
-    choice = openai_response["choices"][choice_ix]
-    if "message" in choice:
-        return choice["message"]["content"]
-    return choice["text"]
+    choice = openai_response.choices[choice_ix]
+    if hasattr(choice, "message"):
+        return choice.message.content
+    return choice.text
 
 
 def get_usage(history: Collection[Mapping]):
@@ -115,12 +114,12 @@ def get_usage(history: Collection[Mapping]):
     for event in history:
         if 'response' in event.keys():
             event = event['response']
-        if 'content' in event.keys():
+        elif 'content' in event.keys():
             event = event['content']
-        if 'usage' not in event.keys():
+        if not hasattr(event, 'usage'):
             continue
-        ptok += event['usage']['prompt_tokens']
-        ctok += event['usage']['completion_tokens']
+        ptok += event.usage.prompt_tokens
+        ctok += event.usage.completion_tokens
     return {'prompt': ptok, 'completion': ctok, 'total': ptok + ctok}
 
 

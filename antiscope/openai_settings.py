@@ -5,7 +5,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 
-def get_secrets():
+def get_secrets() -> dict[str, str]:
     paths = Path(__file__).parents[0:2]
     contents = chain.from_iterable(map(lambda p: p.iterdir(), paths))
     try:
@@ -14,24 +14,21 @@ def get_secrets():
         warnings.warn(
             "No api_secrets.py. Remote API-based features won't work."
         )
-        return None, None
+        return {}
     spec = spec_from_file_location("", file)
     mod = module_from_spec(spec)
     spec.loader.exec_module(mod)
     try:
-        return mod.OPENAI_API_KEY, mod.OPENAI_ORGANIZATION
+        return {
+            'api_key': mod.OPENAI_API_KEY,
+            'organization': mod.OPENAI_ORGANIZATION
+        }
     except AttributeError:
         warnings.warn(
             "No OpenAI API info in api_secrets.py. "
             "OpenAI API features won't work."
         )
-
-
-def set_up_secrets():
-    api_key, organization = get_secrets()
-    import openai
-
-    openai.api_key, openai.organization = api_key, organization
+        return {}
 
 
 DEFAULT_SETTINGS = MappingProxyType(
